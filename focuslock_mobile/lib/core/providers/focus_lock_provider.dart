@@ -5,19 +5,27 @@ import '../models/session_config.dart';
 import '../models/session_status.dart';
 import '../services/focus_lock_service.dart';
 import '../services/mock_focus_lock_service.dart';
+import '../services/http_focus_lock_service.dart';
 
 class FocusLockProvider extends ChangeNotifier {
-  final IFocusLockService _service;
+  IFocusLockService _service;
   StreamSubscription<FocusLockStatus>? _subscription;
 
   FocusLockStatus _status = FocusLockStatus.initial();
   int _selectedFocusMinutes = 25;
   int _selectedBreakMinutes = 5;
-  final bool _isMockMode = true;
+  bool _isMockMode = true;
+  bool _buzzerEnabled = true;
+  bool _lockyReactionsEnabled = true;
 
   FocusLockProvider({IFocusLockService? service})
       : _service = service ?? MockFocusLockService() {
+    _initServiceSubscription();
+  }
+
+  void _initServiceSubscription() {
     _status = _service.currentStatus;
+    _subscription?.cancel();
     _subscription = _service.statusStream.listen((newStatus) {
       _status = newStatus;
       notifyListeners();
@@ -33,6 +41,8 @@ class FocusLockProvider extends ChangeNotifier {
   String get formattedRemaining => _status.formattedRemaining;
   bool get isLocked => _status.state.isLocked;
   bool get isMockMode => _isMockMode;
+  bool get buzzerEnabled => _buzzerEnabled;
+  bool get lockyReactionsEnabled => _lockyReactionsEnabled;
 
   int get selectedFocusMinutes => _selectedFocusMinutes;
   int get selectedBreakMinutes => _selectedBreakMinutes;
@@ -46,6 +56,33 @@ class FocusLockProvider extends ChangeNotifier {
   void setBreakMinutes(int minutes) {
     if (_selectedBreakMinutes == minutes) return;
     _selectedBreakMinutes = minutes;
+    notifyListeners();
+  }
+
+  void toggleMockMode(bool value) {
+    if (_isMockMode == value) return;
+    _isMockMode = value;
+    _service.dispose();
+
+    if (_isMockMode) {
+      _service = MockFocusLockService();
+    } else {
+      _service = HttpFocusLockService();
+      _service.connect();
+    }
+    _initServiceSubscription();
+    notifyListeners();
+  }
+
+  void setBuzzerEnabled(bool value) {
+    if (_buzzerEnabled == value) return;
+    _buzzerEnabled = value;
+    notifyListeners();
+  }
+
+  void setLockyReactionsEnabled(bool value) {
+    if (_lockyReactionsEnabled == value) return;
+    _lockyReactionsEnabled = value;
     notifyListeners();
   }
 
