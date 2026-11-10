@@ -1,12 +1,12 @@
 """
 FocusLock — Punto de Entrada Unificado: Servidor API REST + Consola Interactiva CLI
-Asignatura: Electrónica Digital III (Entrega 30%)
-Plataforma Destino: Raspberry Pi Zero W (BCM2835 ARMv6 @ 1 GHz, 512 MB RAM) y PC
+Asignatura: Electrónica Digital III
+Plataforma Destino: Raspberry Pi 4 Model B (o Pi Zero W) y PC (Simulación)
 
-Modos de ejecución (sin código descartable; ambos usan la misma FSM y HAL):
+Modos de ejecución:
   1. Servidor API REST para App Móvil Flutter:
        python main.py
-  2. Consola Interactiva en Terminal para demostración en vivo (Digital III):
+  2. Consola Interactiva en Terminal para sustentación/muestra en vivo:
        python main.py --cli
 """
 
@@ -25,12 +25,10 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-# Instancias compartidas de Hardware (HAL) y Máquina de Estados (FSM)
+# Instancias unificadas de Hardware (HAL) y Máquina de Estados (FSM)
 hw = HardwareController()
 fsm = FocusLockFSM(hardware=hw)
 
-# Inicialización perezosa / condicional de FastAPI para permitir que `--cli`
-# funcione incluso en entornos donde aún no se haya instalado FastAPI/Uvicorn.
 try:
     from fastapi import FastAPI, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
@@ -44,11 +42,11 @@ except ImportError:
 if FASTAPI_AVAILABLE:
     app = FastAPI(
         title="FocusLock Embebido API",
-        description="Servidor de control local en Raspberry Pi Zero W para la estación física FocusLock",
-        version="1.0.0",
+        description="Servidor de control local en Raspberry Pi 4 para la estación física FocusLock",
+        version="1.2.0",
     )
 
-    # Permitir peticiones desde cualquier origen en la LAN local (Flutter app)
+    # Permitir peticiones desde cualquier IP en la LAN / Wi-Fi local (App Flutter)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -58,8 +56,10 @@ if FASTAPI_AVAILABLE:
     )
 
     class StartSessionRequest(BaseModel):
-        focus_minutes: int = Field(default=25, ge=1, le=180, description="Minutos de enfoque bloqueado")
-        break_minutes: int = Field(default=5, ge=1, le=60, description="Minutos de descanso")
+        focus_minutes: Optional[int] = Field(default=25, ge=0, le=180, description="Minutos de enfoque bloqueado")
+        break_minutes: Optional[int] = Field(default=5, ge=0, le=60, description="Minutos de descanso")
+        focus_seconds: Optional[int] = Field(default=None, ge=5, le=10800, description="Segundos directos para muestra/demo")
+        break_seconds: Optional[int] = Field(default=None, ge=1, le=3600, description="Segundos de descanso para muestra")
         session_id: Optional[str] = None
 
     class EmergencyUnlockRequest(BaseModel):
@@ -72,35 +72,41 @@ if FASTAPI_AVAILABLE:
     def root() -> Dict[str, str]:
         return {
             "service": "FocusLock Embedded Daemon",
-            "platform": "Raspberry Pi Zero W",
+            "platform": "Raspberry Pi 4 Model B (40-Pin Header)",
             "status": "online",
+            "servos": "Dual Servo (Tapa: Pin 12/GPIO 18, Bloqueo: Pin 33/GPIO 13)",
         }
 
     @app.get("/api/status")
     def get_status() -> Dict[str, Any]:
-        """
-        Devuelve el estado instantáneo de la FSM, temporizador y periféricos:
-        { "state": "IDLE", "phone_detected": false, "remaining_seconds": 0, "session_id": null, ... }
-        """
+        """Devuelve el estado instantáneo de la FSM, temporizador, servos, LCD y periféricos."""
         return fsm.get_status()
+
+    @app.get("/api/telemetry")
+    def get_telemetry() -> Dict[str, Any]:
+        """Telemetría detallada de hardware a nivel de pines GPIO y voltajes lógicos."""
+        return hw.get_hardware_telemetry()
 
     @app.post("/api/session/start")
     def start_session(req: StartSessionRequest) -> Dict[str, Any]:
-        """Inicia una sesión Pomodoro y pone el sistema a la espera del smartphone."""
+        """Inicia una sesión de estudio o demostración acelerada."""
         fsm.start_session(
-            focus_minutes=req.focus_minutes,
-            break_minutes=req.break_minutes,
+            focus_minutes=req.focus_minutes or 25,
+            break_minutes=req.break_minutes or 5,
             session_id=req.session_id,
+            focus_seconds=req.focus_seconds,
+            break_seconds=req.break_seconds,
         )
+        mode = f"{req.focus_seconds}s (Demo)" if req.focus_seconds else f"{req.focus_minutes}m"
         return {
             "ok": True,
-            "message": "Sesión iniciada. Esperando detección del celular en la base.",
+            "message": f"Sesión ({mode}) iniciada. Esperando detección del celular.",
             "data": fsm.get_status(),
         }
 
     @app.post("/api/session/cancel")
     def cancel_session() -> Dict[str, Any]:
-        """Cancela la sesión si el cerrojo aún no ha sido enclavado o durante descanso."""
+        """Cancela la sesión si la caja aún no ha sido bloqueada o durante descanso."""
         success = fsm.cancel_session()
         if not success:
             raise HTTPException(
@@ -115,17 +121,17 @@ if FASTAPI_AVAILABLE:
 
     @app.post("/api/hardware/unlock")
     def emergency_unlock(req: Optional[EmergencyUnlockRequest] = None) -> Dict[str, Any]:
-        """Apertura manual o de emergencia del cerrojo mecánico."""
+        """Apertura manual o de emergencia: desbloquea el cerrojo y abre la tapa."""
         fsm.emergency_unlock()
         return {
             "ok": True,
-            "message": "Cerrojo liberado por protocolo de emergencia.",
+            "message": "Caja desbloqueada y compuerta abierta por protocolo de emergencia.",
             "data": fsm.get_status(),
         }
 
     @app.post("/api/hardware/mock_phone")
     def mock_phone_detection(req: MockPhoneRequest) -> Dict[str, Any]:
-        """Endpoint de simulación para pruebas en PC cuando no hay GPIO físico."""
+        """Endpoint de simulación de presencia de celular."""
         hw.set_mock_phone_detected(req.detected, bypass_debounce=True)
         return {
             "ok": True,
@@ -141,13 +147,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cli",
         action="store_true",
-        help="Inicia la consola interactiva en terminal con telemetría en tiempo real (Digital III).",
+        help="Inicia la consola interactiva en terminal con telemetría en tiempo real.",
     )
     parser.add_argument(
         "--host",
         type=str,
         default="0.0.0.0",
-        help="Host de escucha para el servidor FastAPI (por defecto: 0.0.0.0).",
+        help="Host de escucha para el servidor FastAPI (por defecto: 0.0.0.0 para acceso LAN).",
     )
     parser.add_argument(
         "--port",
@@ -174,5 +180,12 @@ if __name__ == "__main__":
             )
         import uvicorn
 
-        # En la Raspberry Pi Zero W (512 MB RAM, monocore), 1 worker es lo óptimo
-        uvicorn.run("main:app", host=args.host, port=args.port, reload=False, workers=1)
+        print("\n" + "=" * 70)
+        print("  🚀 FOCUSLOCK DAEMON INICIADO (Raspberry Pi 4 / PC)")
+        print(f"  • Escuchando en: http://{args.host}:{args.port}")
+        print("  • Servos: Tapa en Pin 12 (GPIO 18) | Bloqueo en Pin 33 (GPIO 13)")
+        print("  • Sensor: Pin 11 (GPIO 17) | Buzzer: Pin 13 (GPIO 27)")
+        print("  • LEDs: Rojo Pin 15 (GPIO 22) | Verde Pin 16 (GPIO 23)")
+        print("  • Pantalla: TFT 2.8\" SPI (ILI9341)")
+        print("=" * 70 + "\n")
+        uvicorn.run(app, host=args.host, port=args.port, reload=False, workers=1)

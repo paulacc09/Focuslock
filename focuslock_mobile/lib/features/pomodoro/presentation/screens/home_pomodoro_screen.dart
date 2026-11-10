@@ -5,6 +5,7 @@ import '../../../../core/models/focus_lock_state.dart';
 import '../../../../core/providers/focus_lock_provider.dart';
 import '../../../../shared/widgets/circular_pomodoro_timer.dart';
 import '../../../../shared/widgets/locky_mascot.dart';
+import '../../../connection/presentation/screens/connection_screen.dart';
 
 class HomePomodoroScreen extends StatefulWidget {
   const HomePomodoroScreen({super.key});
@@ -94,36 +95,54 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
         ],
       ),
       actions: [
-        // Chip indicador de conexión Pi Zero W / Simulador
-        Container(
-          margin: const EdgeInsets.only(right: 16),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceCard,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.borderSubtle, width: 1.2),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
+        // Chip indicador de conexión Pi 4 / Simulador (Toca para configurar IP)
+        InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ConnectionScreen()),
+            );
+          },
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            margin: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceCard,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: provider.isMockMode ? AppColors.graceChipText : AppColors.breakChipText,
+                width: 1.2,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: provider.isMockMode ? AppColors.graceChipText : AppColors.breakChipText,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  provider.isMockMode ? 'Simulador (Conectar Pi)' : 'Pi 4 En Línea',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: provider.isMockMode ? AppColors.graceChipText : AppColors.breakChipText,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.settings_ethernet_rounded,
+                  size: 14,
                   color: provider.isMockMode ? AppColors.graceChipText : AppColors.breakChipText,
                 ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                provider.isMockMode ? 'Simulador' : 'Pi Zero En Línea',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
@@ -365,7 +384,7 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
 
         const SizedBox(height: 24),
 
-        // Sección 1: Duración (Presets 25m, 45m, 60m)
+        // Sección 1: Duración (Presets 30s Demo, 25m, 45m, 60m)
         const Text(
           '1. Selecciona la Duración del Enfoque',
           style: TextStyle(
@@ -377,10 +396,12 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
         const SizedBox(height: 12),
         Row(
           children: [
+            _buildDemoPresetChip(provider),
+            const SizedBox(width: 8),
             _buildPresetChip(provider, 25, '25 min', 'Clásico'),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             _buildPresetChip(provider, 45, '45 min', 'Profundo'),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             _buildPresetChip(provider, 60, '60 min', 'Intenso'),
           ],
         ),
@@ -518,7 +539,7 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
           child: ElevatedButton.icon(
             onPressed: () => provider.startSession(),
             icon: const Icon(Icons.lock_rounded, size: 20),
-            label: Text('Bloquear Caja e Iniciar (${provider.selectedFocusMinutes} min)'),
+            label: Text('Bloquear Caja e Iniciar (${provider.selectedDurationLabel})'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primarySage,
               foregroundColor: Colors.white,
@@ -957,8 +978,60 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
     );
   }
 
+  Widget _buildDemoPresetChip(FocusLockProvider provider) {
+    final isSelected = provider.isDemoMode && provider.selectedFocusSeconds == 30;
+
+    return Expanded(
+      child: InkWell(
+        onTap: () => provider.setFocusSeconds(30, breakSeconds: 10),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.graceOrange : AppColors.surfaceCard,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected ? AppColors.graceOrange : AppColors.borderSubtle,
+              width: 1.5,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: AppColors.graceOrange.withValues(alpha: 0.25),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            children: [
+              Text(
+                '30 seg',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: isSelected ? Colors.white : AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Demo',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? Colors.white.withValues(alpha: 0.9) : AppColors.graceOrange,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPresetChip(FocusLockProvider provider, int minutes, String label, String tag) {
-    final isSelected = provider.selectedFocusMinutes == minutes;
+    final isSelected = !provider.isDemoMode && provider.selectedFocusMinutes == minutes;
 
     return Expanded(
       child: InkWell(

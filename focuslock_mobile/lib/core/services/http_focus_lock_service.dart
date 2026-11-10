@@ -7,19 +7,24 @@ import '../models/session_config.dart';
 import '../models/session_status.dart';
 import 'focus_lock_service.dart';
 
-/// Implementación HTTP REST para comunicarse con el daemon FastAPI en la Raspberry Pi Zero W
-/// (Por defecto mDNS: http://focuslock.local:8000)
+/// Implementación HTTP REST para comunicarse con el daemon FastAPI en la Raspberry Pi 4 / Pi Zero W
 class HttpFocusLockService implements FocusLockService {
   final _controller = StreamController<FocusLockStatus>.broadcast();
   final ValueNotifier<FocusLockStatus> _notifier =
       ValueNotifier<FocusLockStatus>(FocusLockStatus.disconnected());
 
   FocusLockStatus _current = FocusLockStatus.disconnected();
-  String _baseUrl = 'http://focuslock.local:8000';
+  String _host = '192.168.43.59';
+  int _port = 8000;
+  String _baseUrl = 'http://192.168.43.59:8000';
   Timer? _pollingTimer;
   final http.Client _client;
 
   HttpFocusLockService({http.Client? client}) : _client = client ?? http.Client();
+
+  String get host => _host;
+  int get port => _port;
+  String get baseUrl => _baseUrl;
 
   @override
   Stream<FocusLockStatus> get statusStream => _controller.stream;
@@ -40,13 +45,30 @@ class HttpFocusLockService implements FocusLockService {
 
   @override
   Future<void> connect({String host = 'focuslock.local', int port = 8000}) async {
-    _baseUrl = 'http://$host:$port';
+    _host = host.trim().isEmpty ? 'focuslock.local' : host.trim();
+    _port = port;
+    _baseUrl = 'http://$_host:$_port';
     _pollingTimer?.cancel();
 
     await _fetchStatus();
     _pollingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _fetchStatus();
     });
+  }
+
+  Future<bool> testConnection({String? host, int? port}) async {
+    final targetHost = host ?? _host;
+    final targetPort = port ?? _port;
+    final url = 'http://$targetHost:$targetPort/api/status';
+
+    try {
+      final response = await _client
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 3));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _fetchStatus() async {
@@ -172,4 +194,3 @@ class HttpFocusLockService implements FocusLockService {
     _controller.close();
   }
 }
-

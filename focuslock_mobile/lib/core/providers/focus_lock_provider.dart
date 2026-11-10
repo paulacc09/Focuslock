@@ -14,12 +14,16 @@ class FocusLockProvider extends ChangeNotifier {
   FocusLockStatus _status = FocusLockStatus.initial();
   int _selectedFocusMinutes = 25;
   int _selectedBreakMinutes = 5;
-  bool _isMockMode = true;
+  int? _selectedFocusSeconds;
+  int? _selectedBreakSeconds;
+  bool _isMockMode = false;
   bool _buzzerEnabled = true;
   bool _lockyReactionsEnabled = true;
+  String _host = '192.168.43.59';
+  int _port = 8000;
 
   FocusLockProvider({IFocusLockService? service})
-      : _service = service ?? MockFocusLockService() {
+      : _service = service ?? (HttpFocusLockService()..connect(host: '192.168.43.59', port: 8000)) {
     _initServiceSubscription();
   }
 
@@ -46,10 +50,27 @@ class FocusLockProvider extends ChangeNotifier {
 
   int get selectedFocusMinutes => _selectedFocusMinutes;
   int get selectedBreakMinutes => _selectedBreakMinutes;
+  int? get selectedFocusSeconds => _selectedFocusSeconds;
+  bool get isDemoMode => _selectedFocusSeconds != null;
+
+  String get selectedDurationLabel => _selectedFocusSeconds != null
+      ? '$_selectedFocusSeconds seg (Demo)'
+      : '$_selectedFocusMinutes min';
+
+  String get host => _host;
+  int get port => _port;
 
   void setFocusMinutes(int minutes) {
+    _selectedFocusSeconds = null;
+    _selectedBreakSeconds = null;
     if (_selectedFocusMinutes == minutes) return;
     _selectedFocusMinutes = minutes;
+    notifyListeners();
+  }
+
+  void setFocusSeconds(int seconds, {int breakSeconds = 10}) {
+    _selectedFocusSeconds = seconds;
+    _selectedBreakSeconds = breakSeconds;
     notifyListeners();
   }
 
@@ -67,10 +88,25 @@ class FocusLockProvider extends ChangeNotifier {
     if (_isMockMode) {
       _service = MockFocusLockService();
     } else {
-      _service = HttpFocusLockService();
-      _service.connect();
+      final httpServ = HttpFocusLockService();
+      httpServ.connect(host: _host, port: _port);
+      _service = httpServ;
     }
     _initServiceSubscription();
+    notifyListeners();
+  }
+
+  Future<void> updateNetworkEndpoint(String host, int port) async {
+    _host = host.trim().isEmpty ? 'focuslock.local' : host.trim();
+    _port = port;
+
+    if (!_isMockMode) {
+      _service.dispose();
+      final httpServ = HttpFocusLockService();
+      await httpServ.connect(host: _host, port: _port);
+      _service = httpServ;
+      _initServiceSubscription();
+    }
     notifyListeners();
   }
 
@@ -90,6 +126,8 @@ class FocusLockProvider extends ChangeNotifier {
     final config = PomodoroSessionConfig(
       focusMinutes: _selectedFocusMinutes,
       breakMinutes: _selectedBreakMinutes,
+      focusSeconds: _selectedFocusSeconds,
+      breakSeconds: _selectedBreakSeconds,
     );
     await _service.startSession(config);
   }

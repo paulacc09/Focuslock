@@ -2,8 +2,8 @@ class AppConstants {
   static const String appName = 'FocusLock';
   static const String appVersion = '1.0.0';
 
-  // Network defaults
-  static const String defaultMdnsHost = 'focuslock.local';
+  // Network defaults (IP directa de tu Raspberry Pi 4)
+  static const String defaultMdnsHost = '192.168.43.59';
   static const int defaultPort = 8000;
   static const String prefHostKey = 'focuslock_saved_host';
 

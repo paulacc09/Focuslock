@@ -99,21 +99,24 @@ flowchart LR
 
 ---
 
-## 🔌 Esquema de Conexiones Físicas (Pinout)
+## 🔌 Esquema de Conexiones Físicas (Pinout — Raspberry Pi 4 Model B)
 
-La siguiente tabla resume el conexionado físico entre los módulos electrónicos y la regleta de 40 pines de la **Raspberry Pi Zero W**:
+La siguiente tabla resume el conexionado físico entre los módulos electrónicos y la regleta estándar de 40 pines de la **Raspberry Pi 4 Model B** (y Pi Zero W):
 
 | Periférico | Pin BCM | Pin Físico | Nivel / Alimentación | Función / Descripción Técnica |
 | :--- | :---: | :---: | :---: | :--- |
-| **Servomotor SG90 (Señal)** | `GPIO 18` | **Pin 12** | PWM Hardware (3.3V) | Modulación de ancho de pulso a 50 Hz ($T = 20\text{ ms}$). |
-| **Servomotor SG90 (VCC)** | — | **Pin 2 o 4** | 5.0V | Alimentación del motor (se recomienda fuente adecuada a la corriente de torque). |
-| **Servomotor SG90 (GND)** | — | **Pin 6** | GND | Tierra de referencia común. |
-| **Sensor TCRT5000 (D0)** | `GPIO 17` | **Pin 11** | Entrada Digital (3.3V) | Lógica activa en bajo (*Active-Low*) con Pull-Up interno activado. |
-| **Sensor TCRT5000 (VCC)** | — | **Pin 1 o 17** | 3.3V | Alimentación lógica del comparador LM393 del sensor. |
-| **Sensor TCRT5000 (GND)** | — | **Pin 9** | GND | Tierra de referencia del sensor. |
-| **LED Rojo (Enfoque)** | `GPIO 22` | **Pin 15** | Salida Digital (3.3V) | Ánodo con resistencia en serie ($220\Omega$ - $330\Omega$) y cátodo a GND. |
-| **LED Verde (Libre)** | `GPIO 23` | **Pin 16** | Salida Digital (3.3V) | Ánodo con resistencia en serie ($220\Omega$ - $330\Omega$) y cátodo a GND. |
-| **Buzzer Activo (+)** | `GPIO 27` | **Pin 13** | Salida Digital (3.3V) | Terminal positivo (+). Terminal negativo (-) a GND (Pin 14 o 20). |
+| **Servo 1 — Tapa / Compuerta (Señal)** | `GPIO 18` | **Pin 12** | PWM0 Hardware (3.3V) | Modulación PWM a 50 Hz. Abre (0° / 1.0 ms) y Cierra la tapa (90° / 2.0 ms). |
+| **Servo 2 — Bloqueo / Cerrojo (Señal)** | `GPIO 13` | **Pin 33** | PWM1 Hardware (3.3V) | Modulación PWM a 50 Hz. Desbloquea (0° / 1.0 ms) y Bloquea la caja (90° / 2.0 ms). |
+| **Alimentación Servos (VCC)** | — | **Marranita Externa** | 5.0V (Ext) | Alimentación externa recomendada (evita caídas de tensión y reinicios de la Pi). |
+| **Alimentación Servos (GND)** | — | **Pin 6, 14 o 39** | GND Común | Tierra común unida entre fuente externa y Raspberry Pi. |
+| **Sensor TCRT5000 / HW-201 (D0)** | `GPIO 17` | **Pin 11** | Entrada Digital (3.3V) | Lógica activa en bajo (*Active-Low*, 0V con teléfono) con Pull-Up interno activado. |
+| **Sensor TCRT5000 (VCC / GND)** | — | **Pin 1 (3.3V) / Pin 9** | 3.3V / GND | Alimentación del comparador óptico. |
+| **LED Rojo (Enfoque / Bloqueado)** | `GPIO 22` | **Pin 15** | Salida Digital (3.3V) | Ánodo con resistencia de $220\Omega$; cátodo a GND (Pin 14). |
+| **LED Verde (Libre / Abierto)** | `GPIO 23` | **Pin 16** | Salida Digital (3.3V) | Ánodo con resistencia de $220\Omega$; cátodo a GND (Pin 14). |
+| **Buzzer Activo (+)** | `GPIO 27` | **Pin 13** | Salida Digital (3.3V) | Terminal (+) a GPIO 27; Terminal (-) a GND (Pin 14). Bips en cuenta regresiva. |
+| **Pantalla LCD 16x2 I2C (SDA)** | `GPIO 2` | **Pin 3** | I2C Data (3.3V) | Comunicación I2C dirección 0x27 / 0x3F. |
+| **Pantalla LCD 16x2 I2C (SCL)** | `GPIO 3` | **Pin 5** | I2C Clock (3.3V) | Reloj I2C. Muestra estado FSM, cuenta regresiva y avisos de cierre. |
+| **Pantalla LCD (VCC / GND)** | — | **Pin 2 (5V) / Pin 6 (GND)** | 5.0V / GND | Alimentación del módulo LCD I2C. |
 
 ---
 
@@ -337,17 +340,24 @@ Para que el servidor se ejecute automáticamente al energizar la Raspberry Pi Ze
 
 ### 2. Despliegue e Instalación en la Raspberry Pi
 
+> [!TIP]
+> **Credenciales y Configuración de Red Predefinidas:**
+> - **Usuario:** `paula`
+> - **Contraseña:** `Sol123`
+> - **Hostname / mDNS:** `paula` (`paula.local`)
+> - **Red Wi-Fi configurada en SO:** SSID `pau` / Clave `Paloma23`
+
 1. **Acceso remoto por SSH:**
    * **Vía cable USB OTG (Recomendado):** Conecta el cable al puerto central `USB` y a tu PC:
      ```bash
-     ssh paula@raspberrypi.local
+     ssh paula@paula.local
      ```
    * **Vía red local Wi-Fi:**
      ```bash
-     ssh paula@raspberrypi.local
+     ssh paula@paula.local
      # o usando la dirección IP asignada (ejemplo: ssh paula@192.168.1.50)
      ```
-   *(Contraseña preconfigurada durante el flasheo de la imagen).*
+   *(Contraseña preconfigurada: `Sol123`).*
 
 2. **Instalación de paquetes base del sistema:**
    ```bash
@@ -403,7 +413,7 @@ Desarrollada en Flutter con una arquitectura limpia y orientada a característic
   * `FocusLockStatus`: Modelo inmutable representativo del estado completo (conexión, sensor, tiempos restantes, progreso normalizado de 0.0 a 1.0).
 * **`core/services/`**:
   * `IFocusLockService`: Contrato abstracto para desacoplar la capa de transporte.
-  * `HttpFocusLockService`: Cliente HTTP con sondeo periódico (polling a 1 Hz) y llamadas REST contra la Raspberry Pi (`raspberrypi.local:8000`).
+  * `HttpFocusLockService`: Cliente HTTP con sondeo periódico (polling a 1 Hz) y llamadas REST contra la Raspberry Pi (`paula.local:8000`).
   * `MockFocusLockService`: Simulación completa en memoria de la FSM, tiempos y detección de teléfono para pruebas sin hardware.
 * **`core/providers/`**:
   * `FocusLockProvider`: `ChangeNotifier` de la librería `Provider` que expone el estado global y centraliza las acciones del usuario.
