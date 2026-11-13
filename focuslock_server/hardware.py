@@ -1,5 +1,5 @@
 """
-FocusLock — Controlador de Hardware Embebido (Raspberry Pi 4 / Pi Zero W / BCM2835-BCM2711)
+FocusLock — Controlador de Hardware Embebido (Raspberry Pi 5 / 4 / Pi Zero W)
 Asignatura: Electrónica Digital III
 
 ===============================================================================
@@ -14,13 +14,13 @@ FUNDAMENTACIÓN TÉCNICA Y CÁLCULOS DE TEMPORIZACIÓN (PWM, DUAL SERVO & DEBOUN
      * Posición 90°:
        t_on = 2.0 ms  =>  D = (2.0 ms / 20.0 ms) * 100 = 10.0%
 
-   - ASIGNACIÓN DE SERVOS (ESQUEMÁTICO RASPBERRY PI 4):
+   - ASIGNACIÓN DE SERVOS (PINOUT RASPBERRY PI 5 / 4 / ZERO W):
      * SERVO 1 (Tapa / Compuerta):
-       - Pin Físico 12 (GPIO 18 / BCM 18 — Canal PWM0 Hardware).
+       - Pin Físico 12 (GPIO 18 / BCM 18 — Canal PWM Hardware).
        - 0° = Tapa Abierta (1.0 ms / Duty 5%).
        - 90° = Tapa Cerrada (2.0 ms / Duty 10%).
      * SERVO 2 (Cerrojo / Bloqueo de Caja):
-       - Pin Físico 33 (GPIO 13 / BCM 13 — Canal PWM1 Hardware).
+       - Pin Físico 33 (GPIO 13 / BCM 13 — Canal PWM Hardware).
        - 0° = Cerrojo Retraído / Desbloqueado (1.0 ms / Duty 5%).
        - 90° = Cerrojo Enclavado / Bloqueado (2.0 ms / Duty 10%).
 

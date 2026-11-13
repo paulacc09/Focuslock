@@ -85,7 +85,22 @@ if FASTAPI_AVAILABLE:
     @app.get("/api/telemetry")
     def get_telemetry() -> Dict[str, Any]:
         """Telemetría detallada de hardware a nivel de pines GPIO y voltajes lógicos."""
-        return hw.get_hardware_telemetry()
+        data = hw.get_hardware_telemetry()
+        data["fsm_state"] = fsm.state.value
+        data["remaining_seconds"] = fsm.remaining_seconds
+        data["total_seconds"] = fsm.total_seconds
+        data["events"] = fsm.get_recent_events()
+        return data
+
+    @app.get("/dashboard")
+    def get_dashboard() -> Any:
+        """Sirve el Panel Visual Gigante para PC en vivo."""
+        import os
+        from fastapi.responses import FileResponse
+        dash_path = os.path.join(os.path.dirname(__file__), "dashboard.html")
+        if os.path.exists(dash_path):
+            return FileResponse(dash_path)
+        return {"error": "dashboard.html not found"}
 
     @app.post("/api/session/start")
     def start_session(req: StartSessionRequest) -> Dict[str, Any]:

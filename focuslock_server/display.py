@@ -47,11 +47,10 @@ except ImportError:
 
 class ILI9341SPIDriver:
     """
-    Controlador SPI para Pantalla TFT 2.8" ILI9341 en orientación Vertical (Portrait 240x320)
-    con el conector de pines en la parte superior.
+    Controlador SPI para Pantalla TFT 2.8" ILI9341 en orientación Horizontal (Landscape 320x240).
     """
-    WIDTH = 240
-    HEIGHT = 320
+    WIDTH = 320
+    HEIGHT = 240
 
     def __init__(
         self,
@@ -61,7 +60,7 @@ class ILI9341SPIDriver:
         spi_bus: int = 0,
         spi_dev: int = 0,
         speed_hz: int = 24000000,
-        rotation: int = 0,   # 0: Portrait (Pines arriba), 2: Portrait 180°
+        rotation: int = 1,   # 1: Landscape 320x240 (0x68), 3: Landscape 180° (0xA8)
     ) -> None:
         self.dc_pin = dc_pin
         self.rst_pin = rst_pin
@@ -106,12 +105,12 @@ class ILI9341SPIDriver:
         time.sleep(0.12)
         self.write_cmd(0x28)  # Display OFF
 
-        # Orientación Vertical Portrait sin efecto espejo
+        # Orientación Horizontal Landscape (320x240)
         # Registro 0x36 MADCTL:
-        # 0x08 = Portrait normal (BGR)
-        # 0x48 = Portrait con corrección de columna si se requiriese
+        # 0x68 = Landscape normal (MV=1, MX=1, BGR=1)
+        # 0xA8 = Landscape rotado 180° (MV=1, MY=1, BGR=1)
         self.write_cmd(0x36)
-        madctl = 0x08 if self.rotation == 0 else 0xC8
+        madctl = 0x68 if self.rotation == 1 else 0xA8
         self.write_data(madctl)
 
         # Formato de píxel: 16-bit RGB565
@@ -158,7 +157,7 @@ class ILI9341SPIDriver:
 class DisplayController:
     """
     Controlador unificado de visualización para FocusLock.
-    Gestiona la pantalla TFT física en vertical (240x320) y el búfer en memoria.
+    Gestiona la pantalla TFT física en horizontal (320x240) y el búfer en memoria.
     """
 
     def __init__(self) -> None:
@@ -172,7 +171,7 @@ class DisplayController:
             try:
                 self.tft_driver = ILI9341SPIDriver()
                 self.is_hardware_connected = True
-                logger.info("✅ Pantalla TFT 2.8\" SPI (ILI9341) inicializada correctamente en modo Vertical.")
+                logger.info("✅ Pantalla TFT 2.8\" SPI (ILI9341) inicializada en modo Horizontal (320x240).")
             except Exception as ex:
                 logger.error("❌ Error al iniciar TFT SPI: %s", ex)
 
@@ -183,30 +182,48 @@ class DisplayController:
             return
 
         try:
-            # Lienzo vertical 240 ancho x 320 alto (Pines arriba)
-            img = Image.new("RGB", (240, 320), color="#0B132B")
+            # Lienzo horizontal 320 ancho x 240 alto (Landscape)
+            img = Image.new("RGB", (320, 240), color="#0B132B")
             draw = ImageDraw.Draw(img)
 
-            # Barra superior con marca
-            draw.rectangle([(0, 0), (240, 48)], fill="#1C2541")
-            draw.text((16, 16), "FOCUSLOCK", fill="#48CAE4")
-            draw.ellipse([(210, 18), (222, 30)], fill=theme_color)
+            # Fuentes grandes y legibles para TFT Horizontal 320x240
+            try:
+                font_brand = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+                font_label = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
+                font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
+                font_subtitle = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+                font_footer = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
+            except Exception:
+                try:
+                    font_brand = ImageFont.truetype("arialbd.ttf", 22)
+                    font_label = ImageFont.truetype("arial.ttf", 15)
+                    font_title = ImageFont.truetype("arialbd.ttf", 26)
+                    font_subtitle = ImageFont.truetype("arialbd.ttf", 28)
+                    font_footer = ImageFont.truetype("arial.ttf", 13)
+                except Exception:
+                    font_brand = font_label = font_title = font_subtitle = font_footer = ImageFont.load_default()
 
-            # Tarjeta de estado principal
-            draw.rounded_rectangle([(12, 65), (228, 290)], radius=14, fill="#1C2541", outline=theme_color, width=3)
+            # 1. Barra superior con marca y LED indicador visual
+            draw.rectangle([(0, 0), (320, 48)], fill="#1C2541")
+            draw.text((16, 12), "FOCUSLOCK", fill="#38BDF8", font=font_brand)
+            draw.ellipse([(282, 14), (304, 36)], fill=theme_color, outline="#FFFFFF", width=2)
 
-            # Texto de estado
-            draw.text((24, 100), "ESTADO:", fill="#8D99AE")
-            draw.text((24, 130), title, fill="#FFFFFF")
+            # 2. Tarjeta principal de estado (diseño panorámico)
+            draw.rounded_rectangle([(12, 58), (308, 228)], radius=14, fill="#1C2541", outline=theme_color, width=3)
 
-            # Separador sutil
-            draw.line([(24, 175), (216, 175)], fill="#3A506B", width=1)
+            # Etiqueta y Título principal (Letras grandes)
+            draw.text((24, 68), "ESTADO DEL SISTEMA:", fill="#94A3B8", font=font_label)
+            draw.text((24, 92), title, fill="#FFFFFF", font=font_title)
 
-            # Texto secundario / Temporizador destacado
-            draw.text((24, 195), subtitle, fill=theme_color)
+            # Separador horizontal
+            draw.line([(24, 134), (296, 134)], fill="#334155", width=2)
 
-            # Pie de tarjeta
-            draw.text((24, 255), "Estacion Inteligente", fill="#5BC0BE")
+            # Subtítulo / Temporizador (Letras grandes con color del tema)
+            draw.text((24, 146), subtitle, fill=theme_color, font=font_subtitle)
+
+            # 3. Pie de tarjeta
+            draw.rectangle([(15, 198), (305, 225)], fill="#141C2E")
+            draw.text((24, 204), "Estacion Mecatronica Inteligente", fill="#38BDF8", font=font_footer)
 
             self.tft_driver.display_image(img)
         except Exception as ex:

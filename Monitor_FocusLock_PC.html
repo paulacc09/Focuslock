@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FocusLock — Monitor en Vivo (Tema App Oficial)</title>
+  <style>
+    :root {
+      /* Paleta Oficial AppColors (Flutter / Figma) */
+      --bg: #F5F9F8;             /* scaffoldBackground */
+      --card: #FFFFFF;           /* surfaceCard */
+      --muted-bg: #EAF1EF;       /* surfaceMuted */
+      --border: #E2EAE7;         /* borderSubtle */
+      --sage: #7EAE9B;           /* primarySage */
+      --sage-dark: #659683;      /* primarySageDark */
+      --sage-light: #BED6CD;     /* primarySageLight */
+      --text: #192A24;           /* textPrimary (Bosque profundo) */
+      --text-sec: #62756E;       /* textSecondary */
+      --text-muted: #8B9E97;     /* textMuted */
+      --terracotta: #A67358;     /* Locky pelaje */
+      --terracotta-dark: #7D4F38;/* Locky contorno */
+      --peach: #F5DACB;          /* Locky hocico */
+      --focus-bg: #FCEAE4;       /* focusChipBg */
+      --focus-text: #D96B4F;     /* focusChipText */
+      --break-bg: #E2F1E8;       /* breakChipBg */
+      --break-text: #489468;     /* breakChipText */
+      --grace-bg: #FFF0D9;       /* graceChipBg */
+      --grace-text: #E08A26;     /* graceChipText */
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 28px;
+      gap: 20px;
+    }
+
+    /* ENCABEZADO */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card);
+      border: 2px solid var(--border);
+      padding: 16px 26px;
+      border-radius: 22px;
+      box-shadow: 0 8px 24px rgba(25, 42, 36, 0.05);
+    }
+    .brand { display: flex; align-items: center; gap: 16px; }
+    .locky-avatar {
+      width: 58px; height: 58px; border-radius: 18px;
+      background: var(--peach);
+      border: 2px solid var(--terracotta);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px;
+      box-shadow: 0 4px 10px rgba(166, 115, 88, 0.18);
+    }
+    .brand h1 { font-size: 25px; font-weight: 900; letter-spacing: 0.3px; color: var(--text); }
+    .brand p { font-size: 14px; color: var(--text-sec); font-weight: 600; margin-top: 2px; }
+    .conn-bar { display: flex; align-items: center; gap: 12px; }
+    .conn-bar input {
+      background: var(--muted-bg); border: 2px solid var(--border); color: var(--text);
+      padding: 10px 14px; border-radius: 12px; font-size: 15px; width: 230px; font-weight: 700;
+      outline: none;
+    }
+    .conn-bar input:focus { border-color: var(--sage); }
+    .badge-conn {
+      padding: 10px 18px; border-radius: 999px; font-weight: 800; font-size: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .badge-online { background: var(--break-bg); color: var(--break-text); border: 1.5px solid var(--break-text); }
+    .badge-offline { background: var(--focus-bg); color: var(--focus-text); border: 1.5px solid var(--focus-text); }
+
+    /* GRID PRINCIPAL */
+    .grid {
+      display: grid;
+      grid-template-columns: 1.15fr 1.25fr 1fr;
+      gap: 20px;
+      flex: 1;
+    }
+    .card {
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: 24px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-shadow: 0 10px 28px rgba(25, 42, 36, 0.05);
+    }
+    .card-title {
+      font-size: 17px; font-weight: 800; color: var(--text);
+      text-transform: uppercase; letter-spacing: 0.6px;
+      border-bottom: 2px solid var(--muted-bg); padding-bottom: 12px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .pill-tag {
+      font-size: 12.5px; padding: 5px 12px; border-radius: 999px;
+      background: var(--muted-bg); color: var(--sage-dark); font-weight: 800;
+    }
+
+    /* BANNER FSM Y RELOJ CIRCULAR ESTILO APP */
+    .fsm-state-banner {
+      padding: 15px; border-radius: 16px; text-align: center;
+      font-size: 23px; font-weight: 900; letter-spacing: 0.5px;
+      background: var(--break-bg); color: var(--break-text);
+      border: 2px solid var(--sage-light);
+      transition: all 0.25s ease;
+    }
+    .timer-circle {
+      margin: 8px auto;
+      width: 260px; height: 260px; border-radius: 50%;
+      border: 16px solid var(--sage);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: var(--card);
+      box-shadow: 0 12px 32px rgba(126, 174, 155, 0.22), inset 0 0 20px rgba(234, 241, 239, 0.8);
+      transition: border-color 0.3s ease;
+    }
+    .timer-digits { font-size: 68px; font-weight: 900; color: var(--text); font-variant-numeric: tabular-nums; }
+    .timer-sub { font-size: 15px; color: var(--text-sec); font-weight: 800; margin-top: 4px; letter-spacing: 0.5px; }
+
+    /* BOTONES ESTILO APP FLUTTER */
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: auto; }
+    button {
+      padding: 15px 16px; border-radius: 16px; border: none;
+      font-size: 15.5px; font-weight: 800; cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.2s, background 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    button:active { transform: scale(0.97); }
+    .btn-demo {
+      background: var(--grace-bg); color: var(--grace-text);
+      border: 2px solid var(--grace-text);
+      grid-column: span 2; font-size: 17px;
+    }
+    .btn-start {
+      background: var(--sage); color: #FFFFFF;
+      box-shadow: 0 6px 16px rgba(126, 174, 155, 0.35);
+    }
+    .btn-start:hover { background: var(--sage-dark); }
+    .btn-cancel {
+      background: var(--muted-bg); color: var(--text-sec);
+      border: 2px solid var(--border);
+    }
+    .btn-emerg {
+      background: var(--focus-bg); color: var(--focus-text);
+      border: 2px solid var(--focus-text);
+      grid-column: span 2; font-size: 17px;
+    }
+
+    /* CAJAS DE HARDWARE (SENSOR Y SERVOS) */
+    .hw-box {
+      background: var(--bg); border: 2px solid var(--border);
+      border-radius: 18px; padding: 16px 20px;
+      transition: all 0.2s ease;
+    }
+    .hw-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .hw-name { font-size: 16.5px; font-weight: 800; color: var(--text); }
+    .hw-pin {
+      font-size: 12.5px; background: var(--card); color: var(--sage-dark);
+      border: 1.5px solid var(--sage-light); padding: 4px 10px; border-radius: 8px; font-weight: 800;
+    }
+    .hw-status { font-size: 24px; font-weight: 900; margin: 6px 0; }
+    .progress-bg {
+      width: 100%; height: 18px; background: var(--card);
+      border-radius: 99px; overflow: hidden; margin-top: 8px; border: 1.5px solid var(--border);
+    }
+    .progress-fill {
+      height: 100%; background: linear-gradient(90deg, var(--sage-light), var(--sage-dark));
+      width: 0%; transition: width 0.08s linear;
+    }
+
+    /* ESPEJO PANTALLA TFT 2.8" */
+    .tft-frame {
+      width: 100%; max-width: 350px; height: 215px; margin: 0 auto;
+      background: #0B132B; border: 5px solid var(--sage); border-radius: 18px;
+      display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 10px 24px rgba(25, 42, 36, 0.14);
+    }
+    .tft-top {
+      background: #1C2541; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;
+      font-weight: 900; color: #38BDF8; font-size: 17px;
+    }
+    .tft-dot { width: 16px; height: 16px; border-radius: 50%; background: #22C55E; border: 2px solid #fff; }
+    .tft-body { padding: 14px 20px; flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+    .tft-label { font-size: 12px; color: #94A3B8; font-weight: 700; }
+    .tft-line1 { font-size: 24px; font-weight: 900; color: #FFFFFF; }
+    .tft-line2 { font-size: 26px; font-weight: 900; color: #22C55E; margin-top: 4px; }
+
+    /* INDICADORES LED Y BUZZER */
+    .leds-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .led-pill {
+      background: var(--bg); border: 2px solid var(--border); border-radius: 16px;
+      padding: 12px; text-align: center; font-weight: 800; font-size: 13.5px; color: var(--text);
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+    .led-bulb { width: 28px; height: 28px; border-radius: 50%; background: #CBD5E1; border: 2px solid #fff; transition: all 0.15s; }
+    .led-red-on { background: var(--focus-text); box-shadow: 0 0 18px var(--focus-text); }
+    .led-green-on { background: var(--break-text); box-shadow: 0 0 18px var(--break-text); }
+    .buzzer-on { background: var(--grace-text); box-shadow: 0 0 18px var(--grace-text); }
+
+    .event-log {
+      background: var(--bg); border: 2px solid var(--border); border-radius: 14px;
+      padding: 12px 14px; font-family: 'Consolas', monospace; font-size: 13px;
+      color: var(--text-sec); flex: 1; overflow-y: auto; max-height: 190px;
+      display: flex; flex-direction: column; gap: 6px; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="locky-avatar">🦫</div>
+      <div>
+        <h1>FocusLock — Estación Inteligente de Enfoque</h1>
+        <p>Monitor en Vivo con Locky • Sincronizado con App Móvil & Raspberry Pi 5 (Buffer 74LS244)</p>
+      </div>
+    </div>
+    <div class="conn-bar">
+      <span style="color: var(--text-sec); font-size: 14px; font-weight: 800;">IP Raspberry Pi 5:</span>
+      <input type="text" id="apiHost" value="http://192.168.43.157:8000" />
+      <div id="connBadge" class="badge-conn badge-online">● CONECTADO EN VIVO</div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- COLUMNA 1: TEMPORIZADOR Y CONTROLES -->
+    <div class="card">
+      <div class="card-title">
+        <span>1. Sesión Pomodoro & FSM</span>
+        <span class="pill-tag">Sincronizado con App</span>
+      </div>
+
+      <div id="fsmBanner" class="fsm-state-banner">IDLE — SISTEMA LISTO</div>
+
+      <div id="timerCircle" class="timer-circle">
+        <div id="timerDigits" class="timer-digits">00:00</div>
+        <div id="timerSub" class="timer-sub">LISTO PARA ENFOCAR</div>
+      </div>
+
+      <div class="btn-grid">
+        <button class="btn-demo" onclick="startDemo()">⚡ INICIAR DEMO MUESTRA (30s Enfoque / 10s Descanso)</button>
+        <button class="btn-start" onclick="startStandard()">▶ Pomodoro (25 min)</button>
+        <button class="btn-cancel" onclick="cancelSession()">↺ Cancelar / Reset</button>
+        <button class="btn-emerg" onclick="emergencyUnlock()">🚨 APERTURA DE EMERGENCIA (ABRIR CAJA)</button>
+      </div>
+    </div>
+
+    <!-- COLUMNA 2: SENSOR ÓPTICO Y SERVOMOTORES -->
+    <div class="card">
+      <div class="card-title">
+        <span>2. Sensor Óptico & Etapa de Potencia</span>
+        <span class="pill-tag">Muestreo @ 20 Hz</span>
+      </div>
+
+      <!-- SENSOR -->
+      <div class="hw-box" id="sensorBox">
+        <div class="hw-header">
+          <span class="hw-name">📱 Sensor Óptico TCRT5000 (HW-201)</span>
+          <span class="hw-pin">Pin 11 / GPIO 17</span>
+        </div>
+        <div id="sensorStatus" class="hw-status" style="color: var(--grace-text);">COMPARTIMENTO VACÍO (3.3V HIGH)</div>
+        <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--text-sec); font-weight: 700; margin-top: 4px;">
+          <span>Filtro Antirrebote (Debounce 200 ms):</span>
+          <span id="debounceText">200 / 200 ms (ESTABLE)</span>
+        </div>
+        <div class="progress-bg">
+          <div id="debounceBar" class="progress-fill" style="width: 100%;"></div>
+        </div>
+      </div>
+
+      <!-- SERVO 1: TAPA -->
+      <div class="hw-box" id="lidBox">
+        <div class="hw-header">
+          <span class="hw-name">⚙️ Servo 1 — Compuerta / Tapa</span>
+          <span class="hw-pin">Pin 12 (G18) ➔ 74LS244 (1Y1)</span>
+        </div>
+        <div id="servoLidStatus" class="hw-status" style="color: var(--break-text);">0° — TAPA ABIERTA</div>
+        <div style="font-size: 13.5px; color: var(--text-sec); font-weight: 600;">PWM 50 Hz • Pulso: <b id="lidPulse" style="color:var(--text);">1.0 ms (Duty 5% -> 0% Anti-Jitter)</b></div>
+      </div>
+
+      <!-- SERVO 2: CERROJO -->
+      <div class="hw-box" id="lockBox">
+        <div class="hw-header">
+          <span class="hw-name">🔐 Servo 2 — Cerrojo de Seguridad</span>
+          <span class="hw-pin">Pin 33 (G13) ➔ 74LS244 (1Y2)</span>
+        </div>
+        <div id="servoLockStatus" class="hw-status" style="color: var(--break-text);">0° — DESBLOQUEADO</div>
+        <div style="font-size: 13.5px; color: var(--text-sec); font-weight: 600;">PWM 50 Hz • Pulso: <b id="lockPulse" style="color:var(--text);">1.0 ms (Duty 5% -> 0% Anti-Jitter)</b></div>
+      </div>
+    </div>
+
+    <!-- COLUMNA 3: PANTALLA TFT 2.8", LEDS Y BITÁCORA -->
+    <div class="card">
+      <div class="card-title">
+        <span>3. Pantalla TFT 2.8" & Indicadores</span>
+        <span class="pill-tag">ILI9341 SPI 320x240</span>
+      </div>
+
+      <!-- ESPEJO TFT -->
+      <div id="tftFrame" class="tft-frame">
+        <div class="tft-top">
+          <span>FOCUSLOCK</span>
+          <div id="tftDot" class="tft-dot"></div>
+        </div>
+        <div class="tft-body">
+          <div class="tft-label">ESTADO DEL SISTEMA:</div>
+          <div id="tftLine1" class="tft-line1">SISTEMA LISTO</div>
+          <div style="height: 2px; background: #334155; margin: 4px 0;"></div>
+          <div id="tftLine2" class="tft-line2">Inicie sesion...</div>
+        </div>
+      </div>
+
+      <!-- LEDS Y BUZZER -->
+      <div class="leds-row">
+        <div class="led-pill">
+          <div id="ledGreenBulb" class="led-bulb led-green-on"></div>
+          <span>LED VERDE</span>
+          <span style="font-size:11.5px; color:var(--text-muted);">Pin 16 (GPIO 23)</span>
+        </div>
+        <div class="led-pill">
+          <div id="ledRedBulb" class="led-bulb"></div>
+          <span>LED ROJO</span>
+          <span style="font-size:11.5px; color:var(--text-muted);">Pin 15 (GPIO 22)</span>
+        </div>
+        <div class="led-pill">
+          <div id="buzzerBulb" class="led-bulb"></div>
+          <span>BUZZER</span>
+          <span style="font-size:11.5px; color:var(--text-muted);">Pin 13 (GPIO 27)</span>
+        </div>
+      </div>
+
+      <!-- BITÁCORA -->
+      <div style="font-size: 13.5px; font-weight: 800; color: var(--text);">BITÁCORA DE TRANSICIONES EN VIVO:</div>
+      <div id="eventLog" class="event-log">
+        <div>• Monitor FocusLock listo...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const hostInput = document.getElementById('apiHost');
+    let lastState = '';
+    let lastPhone = null;
+    const localEvents = [];
+
+    function addEvent(msg) {
+      const ts = new Date().toLocaleTimeString();
+      localEvents.unshift(`[${ts}] ${msg}`);
+      if (localEvents.length > 10) localEvents.pop();
+      document.getElementById('eventLog').innerHTML = localEvents.map(e => `<div>• ${e}</div>`).join('');
+    }
+
+    function getBaseUrl() {
+      return hostInput.value.replace(/\/+$/, '');
+    }
+
+    function formatMMSS(sec) {
+      const s = Math.max(0, parseInt(sec || 0, 10));
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+    }
+
+    async function startDemo() {
+      await fetch(getBaseUrl() + '/api/session/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ focus_seconds: 30, break_seconds: 10 })
+      });
+      addEvent('Iniciada Demo Rápida (30s Enfoque / 10s Descanso)');
+    }
+
+    async function startStandard() {
+      await fetch(getBaseUrl() + '/api/session/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ focus_minutes: 25, break_minutes: 5 })
+      });
+      addEvent('Iniciada Sesión Pomodoro (25m Enfoque / 5m Descanso)');
+    }
+
+    async function cancelSession() {
+      await fetch(getBaseUrl() + '/api/session/cancel', { method: 'POST' });
+      addEvent('Sesión cancelada / Sistema restablecido a IDLE');
+    }
+
+    async function emergencyUnlock() {
+      await fetch(getBaseUrl() + '/api/hardware/unlock', { method: 'POST' });
+      addEvent('¡APERTURA DE EMERGENCIA EJECUTADA!');
+      setTimeout(() => {
+        fetch(getBaseUrl() + '/api/session/cancel', { method: 'POST' }).catch(() => {});
+      }, 3000);
+    }
+
+    async function pollAll() {
+      try {
+        const [resStatus, resTel] = await Promise.all([
+          fetch(getBaseUrl() + '/api/status', { cache: 'no-store' }),
+          fetch(getBaseUrl() + '/api/telemetry', { cache: 'no-store' })
+        ]);
+        if (!resStatus.ok || !resTel.ok) throw new Error('HTTP Error');
+        const st = await resStatus.json();
+        const t = await resTel.json();
+
+        const badge = document.getElementById('connBadge');
+        badge.className = 'badge-conn badge-online';
+        badge.textContent = '● CONECTADO A PI 5 EN VIVO';
+
+        const state = st.state || 'IDLE';
+        if (state !== lastState) {
+          addEvent(`Cambio de estado FSM -> [${state}]`);
+          lastState = state;
+        }
+        if (t.stable_sensor !== lastPhone) {
+          if (lastPhone !== null) {
+            addEvent(t.stable_sensor ? 'Sensor TCRT5000: CELULAR DEPOSITADO (200ms OK)' : 'Sensor TCRT5000: CELULAR RETIRADO');
+          }
+          lastPhone = t.stable_sensor;
+        }
+
+        const banner = document.getElementById('fsmBanner');
+        const circle = document.getElementById('timerCircle');
+        const tftFrame = document.getElementById('tftFrame');
+        const tftDot = document.getElementById('tftDot');
+        const tftLine2 = document.getElementById('tftLine2');
+
+        let ringColor = '#7EAE9B';
+        let chipBg = '#E2F1E8';
+        let chipText = '#489468';
+        let stateLabel = state;
+
+        if (state === 'IDLE') {
+          ringColor = '#7EAE9B'; chipBg = '#EAF1EF'; chipText = '#659683';
+          stateLabel = 'IDLE — SISTEMA LISTO';
+        } else if (state === 'WAITING_PHONE') {
+          ringColor = '#E08A26'; chipBg = '#FFF0D9'; chipText = '#E08A26';
+          stateLabel = 'ESPERANDO CELULAR EN LA CAJA';
+        } else if (state === 'GRACE_PERIOD') {
+          ringColor = '#E08A26'; chipBg = '#FFF0D9'; chipText = '#E08A26';
+          stateLabel = '⚠️ CERRANDO CAJA EN ' + st.remaining_seconds + ' SEG';
+        } else if (state === 'LOCKED_FOCUS') {
+          ringColor = '#D96B4F'; chipBg = '#FCEAE4'; chipText = '#D96B4F';
+          stateLabel = '🔒 ENFOQUE ACTIVO (CAJA BLOQUEADA)';
+        } else if (state === 'BREAK_OPEN') {
+          ringColor = '#489468'; chipBg = '#E2F1E8'; chipText = '#489468';
+          stateLabel = '☕ TIEMPO DE DESCANSO (CAJA ABIERTA)';
+        } else if (state === 'EMERGENCY_UNLOCKED') {
+          ringColor = '#D96B4F'; chipBg = '#FCEAE4'; chipText = '#D96B4F';
+          stateLabel = '🚨 APERTURA DE EMERGENCIA';
+        }
+
+        banner.textContent = stateLabel;
+        banner.style.background = chipBg;
+        banner.style.color = chipText;
+        banner.style.borderColor = ringColor;
+        circle.style.borderColor = ringColor;
+
+        document.getElementById('timerDigits').textContent = formatMMSS(st.remaining_seconds);
+        document.getElementById('timerSub').textContent = st.lcd_line1 || state;
+
+        // Sensor
+        const sensorStatus = document.getElementById('sensorStatus');
+        const sensorBox = document.getElementById('sensorBox');
+        if (t.stable_sensor) {
+          sensorStatus.textContent = '✅ CELULAR DETECTADO (0.0V LOW)';
+          sensorStatus.style.color = '#489468';
+          sensorBox.style.borderColor = '#7EAE9B';
+          sensorBox.style.background = '#E2F1E8';
+        } else {
+          sensorStatus.textContent = '⏳ COMPARTIMENTO VACÍO (3.3V HIGH)';
+          sensorStatus.style.color = '#E08A26';
+          sensorBox.style.borderColor = '#E2EAE7';
+          sensorBox.style.background = '#F5F9F8';
+        }
+
+        const pct = Math.min(100, Math.round((t.debounce_elapsed_ms / t.debounce_window_ms) * 100));
+        document.getElementById('debounceBar').style.width = pct + '%';
+        document.getElementById('debounceText').textContent =
+          Math.round(t.debounce_elapsed_ms) + ' / ' + Math.round(t.debounce_window_ms) + ' ms (' + (t.is_debouncing ? 'FILTRANDO...' : 'ESTABLE') + ')';
+
+        // Servo 1 (Tapa)
+        const lidEl = document.getElementById('servoLidStatus');
+        const lidBox = document.getElementById('lidBox');
+        if (t.is_lid_closed) {
+          lidEl.textContent = '90° — TAPA CERRADA';
+          lidEl.style.color = '#D96B4F';
+          lidBox.style.background = '#FCEAE4';
+          lidBox.style.borderColor = '#D96B4F';
+          document.getElementById('lidPulse').textContent = '2.0 ms (Duty 10% -> 0% Anti-Jitter)';
+        } else {
+          lidEl.textContent = '0° — TAPA ABIERTA';
+          lidEl.style.color = '#489468';
+          lidBox.style.background = '#F5F9F8';
+          lidBox.style.borderColor = '#E2EAE7';
+          document.getElementById('lidPulse').textContent = '1.0 ms (Duty 5% -> 0% Anti-Jitter)';
+        }
+
+        // Servo 2 (Cerrojo)
+        const lockEl = document.getElementById('servoLockStatus');
+        const lockBox = document.getElementById('lockBox');
+        if (t.is_locked) {
+          lockEl.textContent = '90° — CERROJO BLOQUEADO';
+          lockEl.style.color = '#D96B4F';
+          lockBox.style.background = '#FCEAE4';
+          lockBox.style.borderColor = '#D96B4F';
+          document.getElementById('lockPulse').textContent = '2.0 ms (Duty 10% -> 0% Anti-Jitter)';
+        } else {
+          lockEl.textContent = '0° — CERROJO DESBLOQUEADO';
+          lockEl.style.color = '#489468';
+          lockBox.style.background = '#F5F9F8';
+          lockBox.style.borderColor = '#E2EAE7';
+          document.getElementById('lockPulse').textContent = '1.0 ms (Duty 5% -> 0% Anti-Jitter)';
+        }
+
+        // Espejo TFT
+        document.getElementById('tftLine1').textContent = st.lcd_line1 || '';
+        tftLine2.textContent = st.lcd_line2 || '';
+        tftFrame.style.borderColor = ringColor;
+        tftDot.style.background = ringColor;
+        tftLine2.style.color = ringColor;
+
+        // LEDs y Buzzer
+        document.getElementById('ledGreenBulb').className = 'led-bulb ' + (t.led_green_on ? 'led-green-on' : '');
+        document.getElementById('ledRedBulb').className = 'led-bulb ' + (t.led_red_on ? 'led-red-on' : '');
+        document.getElementById('buzzerBulb').className = 'led-bulb ' + (t.buzzer_on ? 'buzzer-on' : '');
+      } catch (err) {
+        const badge = document.getElementById('connBadge');
+        badge.className = 'badge-conn badge-offline';
+        badge.textContent = '✖ SIN CONEXIÓN A LA PI 5';
+      }
+    }
+
+    setInterval(pollAll, 180);
+    pollAll();
+  </script>
+</body>
+</html>
