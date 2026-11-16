@@ -1,10 +1,10 @@
 """
-FocusLock — Punto de Entrada Unificado: Servidor API REST + Consola Interactiva CLI
+FocusLock — Punto de Entrada Unificado: Servidor API REST + WebSockets en Tiempo Real
 Asignatura: Electrónica Digital III
-Plataforma Destino: Raspberry Pi 4 Model B (o Pi Zero W) y PC (Simulación)
+Plataforma Destino: Raspberry Pi 4 / PC / Despliegue en la Nube (Docker/Render/K8s)
 
 Modos de ejecución:
-  1. Servidor API REST para App Móvil Flutter:
+  1. Servidor API REST + WebSockets para App Móvil y Dashboard Web:
        python main.py
   2. Consola Interactiva en Terminal para sustentación/muestra en vivo:
        python main.py --cli
@@ -13,24 +13,46 @@ Modos de ejecución:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 import logging
-from typing import Any, Dict, Optional
+import os
+from typing import Any, Dict, List, Optional, Set
 
 from hardware import HardwareController
 from fsm import FocusLockFSM
+from database import (
+    init_postgres,
+    init_redis,
+    save_session,
+    update_session_status,
+    log_focus_event,
+    log_noise_audit,
+    get_recent_sessions,
+    set_live_telemetry,
+    get_live_telemetry,
+    push_noise_sample,
+    get_recent_noise_samples,
+    publish_telemetry_event,
+    subscribe_telemetry_events,
+)
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
+logger = logging.getLogger("FocusLock.Server")
 
 # Instancias unificadas de Hardware (HAL) y Máquina de Estados (FSM)
 hw = HardwareController()
 fsm = FocusLockFSM(hardware=hw)
 
+# Conjunto de clientes WebSocket conectados para el Dashboard Web en vivo
+active_web_clients: Set[Any] = set()
+
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel, Field
 
@@ -41,12 +63,12 @@ except ImportError:
 
 if FASTAPI_AVAILABLE:
     app = FastAPI(
-        title="FocusLock Embebido API",
-        description="Servidor de control local en Raspberry Pi 4 para la estación física FocusLock",
-        version="1.2.0",
+        title="FocusLock Cloud & Edge API",
+        description="Servidor de control y telemetría en tiempo real con WebSockets y soporte multi-base de datos",
+        version="2.0.0",
     )
 
-    # Permitir peticiones desde cualquier IP en la LAN / Wi-Fi local (App Flutter)
+    # Permitir peticiones desde cualquier origen (App Flutter, Dashboard Web, Módulo Local)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -61,6 +83,7 @@ if FASTAPI_AVAILABLE:
         focus_seconds: Optional[int] = Field(default=None, ge=5, le=10800, description="Segundos directos para muestra/demo")
         break_seconds: Optional[int] = Field(default=None, ge=1, le=3600, description="Segundos de descanso para muestra")
         session_id: Optional[str] = None
+        session_name: Optional[str] = "Sesión de Enfoque FocusLock"
 
     class EmergencyUnlockRequest(BaseModel):
         auth_token: Optional[str] = None
@@ -68,19 +91,65 @@ if FASTAPI_AVAILABLE:
     class MockPhoneRequest(BaseModel):
         detected: bool
 
+    class LocalTelemetryPayload(BaseModel):
+        attention_score: float = Field(default=1.0, ge=0.0, le=1.0)
+        face_detected: bool = True
+        distraction_detected: bool = False
+        decibels: float = Field(default=45.0, ge=0.0, le=140.0)
+        noise_violation: bool = False
+        snapshot_base64: Optional[str] = None
+        fps: Optional[float] = 0.0
+        timestamp: Optional[str] = None
+
+    @app.on_event("startup")
+    async def startup_event() -> None:
+        """Inicializa bases de datos (PostgreSQL & Redis) y el bus Pub/Sub."""
+        logger.info("Iniciando servicios de base de datos...")
+        init_postgres()
+        init_redis()
+
+        # Conectar suscriptor de Redis Pub/Sub para que mensajes de otras réplicas
+        # se difundan a los WebSockets conectados a esta instancia
+        def on_redis_message(data: Dict[str, Any]) -> None:
+            asyncio.create_task(broadcast_to_web(data))
+
+        subscribe_telemetry_events(on_redis_message)
+
+    async def broadcast_to_web(payload: Dict[str, Any]) -> None:
+        """Envía el payload a todos los navegadores web conectados."""
+        disconnected = set()
+        for client in active_web_clients:
+            try:
+                await client.send_json(payload)
+            except Exception:
+                disconnected.add(client)
+        for client in disconnected:
+            active_web_clients.discard(client)
+
     @app.get("/")
-    def root() -> Dict[str, str]:
+    def root() -> Dict[str, Any]:
         return {
-            "service": "FocusLock Embedded Daemon",
-            "platform": "Raspberry Pi 4 Model B (40-Pin Header)",
+            "service": "FocusLock Cloud & Edge Daemon",
+            "version": "2.0.0",
             "status": "online",
-            "servos": "Dual Servo (Tapa: Pin 12/GPIO 18, Bloqueo: Pin 33/GPIO 13)",
+            "fsm_state": fsm.state.value,
+            "databases": {
+                "postgres": "Active (Relational Storage)",
+                "redis": "Active (Real-time NoSQL & Pub/Sub)",
+            },
+            "websockets": {
+                "local_module": "/ws/telemetry",
+                "live_dashboard": "/ws/live",
+            },
         }
 
     @app.get("/api/status")
     def get_status() -> Dict[str, Any]:
         """Devuelve el estado instantáneo de la FSM, temporizador, servos, LCD y periféricos."""
-        return fsm.get_status()
+        st = fsm.get_status()
+        live_tel = get_live_telemetry()
+        st["local_module"] = live_tel
+        return st
 
     @app.get("/api/telemetry")
     def get_telemetry() -> Dict[str, Any]:
@@ -90,12 +159,12 @@ if FASTAPI_AVAILABLE:
         data["remaining_seconds"] = fsm.remaining_seconds
         data["total_seconds"] = fsm.total_seconds
         data["events"] = fsm.get_recent_events()
+        data["local_telemetry"] = get_live_telemetry()
         return data
 
     @app.get("/dashboard")
     def get_dashboard() -> Any:
         """Sirve el Panel Visual Gigante para PC en vivo."""
-        import os
         from fastapi.responses import FileResponse
         dash_path = os.path.join(os.path.dirname(__file__), "dashboard.html")
         if os.path.exists(dash_path):
@@ -104,18 +173,33 @@ if FASTAPI_AVAILABLE:
 
     @app.post("/api/session/start")
     def start_session(req: StartSessionRequest) -> Dict[str, Any]:
-        """Inicia una sesión de estudio o demostración acelerada."""
+        """Inicia una sesión de estudio o demostración acelerada y la persiste en PostgreSQL."""
+        s_id = req.session_id or f"sess_{int(asyncio.get_event_loop().time() * 1000)}"
         fsm.start_session(
             focus_minutes=req.focus_minutes or 25,
             break_minutes=req.break_minutes or 5,
-            session_id=req.session_id,
+            session_id=s_id,
             focus_seconds=req.focus_seconds,
             break_seconds=req.break_seconds,
         )
         mode = f"{req.focus_seconds}s (Demo)" if req.focus_seconds else f"{req.focus_minutes}m"
+
+        # Persistir en Base de Datos 1 (PostgreSQL)
+        total_sec = req.focus_seconds or ((req.focus_minutes or 25) * 60)
+        save_session({
+            "id": s_id,
+            "session_name": req.session_name or f"Sesión {mode}",
+            "mode": "demo" if req.focus_seconds else "standard",
+            "target_minutes": req.focus_minutes or 25,
+            "remaining_seconds": total_sec,
+            "status": fsm.state.value,
+        })
+        log_focus_event(s_id, "SESSION_START", {"mode": mode, "seconds": total_sec})
+
         return {
             "ok": True,
-            "message": f"Sesión ({mode}) iniciada. Esperando detección del celular.",
+            "session_id": s_id,
+            "message": f"Sesión ({mode}) iniciada y guardada en PostgreSQL.",
             "data": fsm.get_status(),
         }
 
@@ -128,6 +212,10 @@ if FASTAPI_AVAILABLE:
                 status_code=400,
                 detail="No se puede cancelar una sesión que ya se encuentra en Enfoque Bloqueado.",
             )
+        if fsm.session_id:
+            update_session_status(fsm.session_id, "CANCELLED", fsm.remaining_seconds)
+            log_focus_event(fsm.session_id, "SESSION_CANCELLED", {"remaining": fsm.remaining_seconds})
+
         return {
             "ok": True,
             "message": "Sesión cancelada con éxito.",
@@ -138,6 +226,9 @@ if FASTAPI_AVAILABLE:
     def emergency_unlock(req: Optional[EmergencyUnlockRequest] = None) -> Dict[str, Any]:
         """Apertura manual o de emergencia: desbloquea el cerrojo y abre la tapa."""
         fsm.emergency_unlock()
+        if fsm.session_id:
+            update_session_status(fsm.session_id, "EMERGENCY_UNLOCKED", fsm.remaining_seconds)
+            log_focus_event(fsm.session_id, "EMERGENCY_UNLOCK", {"action": "unlocked"})
         return {
             "ok": True,
             "message": "Caja desbloqueada y compuerta abierta por protocolo de emergencia.",
@@ -154,10 +245,160 @@ if FASTAPI_AVAILABLE:
             "data": fsm.get_status(),
         }
 
+    # =========================================================================
+    # ENDPOINTS DE BASES DE DATOS (PostgreSQL & Redis)
+    # =========================================================================
+    @app.get("/api/db/sessions")
+    def get_sessions_history(limit: int = 15) -> Dict[str, Any]:
+        """Consulta histórica desde PostgreSQL (Base de Datos 1)."""
+        sessions = get_recent_sessions(limit=limit)
+        return {
+            "database": "PostgreSQL (Relational)",
+            "count": len(sessions),
+            "sessions": sessions,
+        }
+
+    @app.get("/api/db/telemetry-live")
+    def get_redis_live_telemetry() -> Dict[str, Any]:
+        """Consulta de telemetría de alta frecuencia desde Redis (Base de Datos 2)."""
+        live_data = get_live_telemetry()
+        return {
+            "database": "Redis (In-Memory Key-Value Cache)",
+            "telemetry": live_data,
+        }
+
+    @app.get("/api/db/noise-history")
+    def get_noise_history(limit: int = 30) -> Dict[str, Any]:
+        """Consulta historial de niveles de ruido acústico en decibelios desde Redis."""
+        samples = get_recent_noise_samples(limit=limit)
+        return {
+            "database": "Redis (Circular List Buffer)",
+            "count": len(samples),
+            "samples": samples,
+        }
+
+    @app.post("/api/telemetry/report")
+    def post_telemetry_report(payload: LocalTelemetryPayload) -> Dict[str, Any]:
+        """Endpoint REST alternativo para reporte de módulo local."""
+        data = payload.dict()
+        set_live_telemetry(data)
+        push_noise_sample({
+            "decibels": data["decibels"],
+            "violation": data["noise_violation"],
+            "timestamp": data.get("timestamp"),
+        })
+        if data["noise_violation"]:
+            log_noise_audit(fsm.session_id, data["decibels"], True, "VIOLATION")
+
+        # Publicar en el bus para réplicas y dashboard
+        publish_telemetry_event({"type": "local_telemetry", "data": data})
+        return {"ok": True, "saved_to": ["redis", "postgres"]}
+
+    # =========================================================================
+    # WEBSOCKETS EN TIEMPO REAL (Requisito 3)
+    # =========================================================================
+    @app.websocket("/ws/telemetry")
+    async def websocket_local_module(websocket: WebSocket) -> None:
+        """
+        Canal WebSocket para el Módulo Local (PC / Cámara / Micrófono).
+        Recibe telemetría procesada y la retransmite al dashboard y bases de datos.
+        """
+        await websocket.accept()
+        logger.info("Módulo local conectado a /ws/telemetry.")
+        try:
+            while True:
+                raw_text = await websocket.receive_text()
+                try:
+                    payload = json.loads(raw_text)
+                except json.JSONDecodeError:
+                    continue
+
+                # 1. Guardar en Base de Datos 2: Redis
+                set_live_telemetry(payload)
+                if "decibels" in payload:
+                    push_noise_sample({
+                        "decibels": payload.get("decibels", 0.0),
+                        "violation": payload.get("noise_violation", False),
+                        "timestamp": payload.get("timestamp"),
+                    })
+
+                # 2. Guardar en Base de Datos 1: PostgreSQL si hay distracción o infracción
+                if payload.get("noise_violation"):
+                    log_noise_audit(
+                        fsm.session_id,
+                        float(payload.get("decibels", 0.0)),
+                        True,
+                        "HIGH_NOISE_ALERT",
+                    )
+                if payload.get("distraction_detected"):
+                    log_focus_event(
+                        fsm.session_id,
+                        "DISTRACTION_DETECTED",
+                        {"attention_score": payload.get("attention_score", 0.0)},
+                    )
+
+                # 3. Publicar en Redis Pub/Sub (Balanceador Nginx con réplicas)
+                event = {
+                    "type": "telemetry_update",
+                    "source": "local_module",
+                    "fsm_state": fsm.state.value,
+                    "remaining_seconds": fsm.remaining_seconds,
+                    "telemetry": payload,
+                }
+                publish_telemetry_event(event)
+
+                # 4. Enviar acuse de recibo con estado del hardware al módulo local
+                ack = {
+                    "ok": True,
+                    "fsm_state": fsm.state.value,
+                    "remaining_seconds": fsm.remaining_seconds,
+                }
+                await websocket.send_json(ack)
+        except WebSocketDisconnect:
+            logger.info("Módulo local desconectado de /ws/telemetry.")
+        except Exception as exc:
+            logger.warning("Error en conexión WebSocket del módulo local: %s", exc)
+
+    @app.websocket("/ws/live")
+    async def websocket_dashboard(websocket: WebSocket) -> None:
+        """
+        Canal WebSocket para el Dashboard Web.
+        Envía telemetría en tiempo real a los navegadores web.
+        """
+        await websocket.accept()
+        active_web_clients.add(websocket)
+        logger.info("Nuevo cliente web suscrito a /ws/live. Total clientes: %d", len(active_web_clients))
+        try:
+            # Enviar estado inicial inmediato
+            initial_state = {
+                "type": "init",
+                "fsm": fsm.get_status(),
+                "telemetry": get_live_telemetry(),
+                "recent_noise": get_recent_noise_samples(limit=10),
+            }
+            await websocket.send_json(initial_state)
+
+            # Bucle de escucha y latido
+            while True:
+                msg = await websocket.receive_text()
+                # Si el cliente solicita comando desde web:
+                try:
+                    cmd_data = json.loads(msg)
+                    if cmd_data.get("action") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except Exception:
+                    pass
+        except WebSocketDisconnect:
+            active_web_clients.discard(websocket)
+            logger.info("Cliente web desconectado de /ws/live.")
+        except Exception as exc:
+            active_web_clients.discard(websocket)
+            logger.debug("Error en WebSocket del dashboard web: %s", exc)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="FocusLock — Daemon Embebido (API FastAPI / Consola Interactiva CLI)"
+        description="FocusLock — Daemon Embebido y Cloud (API FastAPI / WebSockets / CLI)"
     )
     parser.add_argument(
         "--cli",
@@ -167,14 +408,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--host",
         type=str,
-        default="0.0.0.0",
-        help="Host de escucha para el servidor FastAPI (por defecto: 0.0.0.0 para acceso LAN).",
+        default=os.getenv("HOST", "0.0.0.0"),
+        help="Host de escucha para el servidor FastAPI.",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="Puerto TCP para el servidor FastAPI (por defecto: 8000).",
+        default=int(os.getenv("PORT", "8000")),
+        help="Puerto TCP para el servidor FastAPI.",
     )
     return parser.parse_args()
 
@@ -196,11 +437,10 @@ if __name__ == "__main__":
         import uvicorn
 
         print("\n" + "=" * 70)
-        print("  🚀 FOCUSLOCK DAEMON INICIADO (Raspberry Pi 4 / PC)")
+        print("  🚀 FOCUSLOCK SERVER INICIADO (Cloud & Edge Ready)")
         print(f"  • Escuchando en: http://{args.host}:{args.port}")
-        print("  • Servos: Tapa en Pin 12 (GPIO 18) | Bloqueo en Pin 33 (GPIO 13)")
-        print("  • Sensor: Pin 11 (GPIO 17) | Buzzer: Pin 13 (GPIO 27)")
-        print("  • LEDs: Rojo Pin 15 (GPIO 22) | Verde Pin 16 (GPIO 23)")
-        print("  • Pantalla: TFT 2.8\" SPI (ILI9341)")
+        print("  • WebSockets en: /ws/telemetry (Módulo Local) y /ws/live (Web)")
+        print("  • Persistencia: PostgreSQL (Relacional) y Redis (NoSQL / PubSub)")
+        print("  • Servos: Tapa en GPIO 18 | Bloqueo en GPIO 13 (Pin 33)")
         print("=" * 70 + "\n")
         uvicorn.run(app, host=args.host, port=args.port, reload=False, workers=1)
