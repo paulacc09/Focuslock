@@ -1,0 +1,6 @@
+websockets>=11.0.0
+requests>=2.31.0
+numpy>=1.24.0
+opencv-python>=4.8.0; sys_platform != 'darwin'
+sounddevice>=0.4.6
+python-dotenv>=1.0.0
