@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # ==============================================================================
+  # BALANCEADOR DE CARGA NGINX (Requisito 6)
+  # ==============================================================================
+  load_balancer:
+    image: nginx:alpine
+    container_name: focuslock_lb
+    restart: always
+    ports:
+      - "80:80"
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - focuslock_server_1
+      - focuslock_server_2
+    networks:
+      - focuslock_net
+
+  # ==============================================================================
+  # RÉPLICA 1: FOCUSLOCK FASTAPI API & WEBSOCKETS (Requisito 1 & 6)
+  # ==============================================================================
+  focuslock_server_1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: focuslock_app_1
+    restart: always
+    environment:
+      - ENVIRONMENT=production
+      - PORT=8000
+      - DATABASE_URL=postgresql://focuslock_user:focuslock_pass@postgres:5432/focuslock_db
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=focuslock_production_secret_key_1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - focuslock_net
+
+  # ==============================================================================
+  # RÉPLICA 2: FOCUSLOCK FASTAPI API & WEBSOCKETS (Requisito 1 & 6)
+  # ==============================================================================
+  focuslock_server_2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: focuslock_app_2
+    restart: always
+    environment:
+      - ENVIRONMENT=production
+      - PORT=8000
+      - DATABASE_URL=postgresql://focuslock_user:focuslock_pass@postgres:5432/focuslock_db
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=focuslock_production_secret_key_2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - focuslock_net
+
+  # ==============================================================================
+  # BASE DE DATOS 1: POSTGRESQL (Requisito 5)
+  # ==============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: focuslock_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: focuslock_user
+      POSTGRES_PASSWORD: focuslock_pass
+      POSTGRES_DB: focuslock_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U focuslock_user -d focuslock_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - focuslock_net
+
+  # ==============================================================================
+  # BASE DE DATOS 2: REDIS (Requisito 5 & 6)
+  # ==============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: focuslock_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - focuslock_net
+
+networks:
+  focuslock_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
