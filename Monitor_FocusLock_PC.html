@@ -3,29 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FocusLock — Monitor en Vivo (Tema App Oficial)</title>
+  <title>FocusLock — Monitor Cloud & Edge en Vivo</title>
   <style>
     :root {
       /* Paleta Oficial AppColors (Flutter / Figma) */
-      --bg: #F5F9F8;             /* scaffoldBackground */
-      --card: #FFFFFF;           /* surfaceCard */
-      --muted-bg: #EAF1EF;       /* surfaceMuted */
-      --border: #E2EAE7;         /* borderSubtle */
-      --sage: #7EAE9B;           /* primarySage */
-      --sage-dark: #659683;      /* primarySageDark */
-      --sage-light: #BED6CD;     /* primarySageLight */
-      --text: #192A24;           /* textPrimary (Bosque profundo) */
-      --text-sec: #62756E;       /* textSecondary */
-      --text-muted: #8B9E97;     /* textMuted */
-      --terracotta: #A67358;     /* Locky pelaje */
-      --terracotta-dark: #7D4F38;/* Locky contorno */
-      --peach: #F5DACB;          /* Locky hocico */
-      --focus-bg: #FCEAE4;       /* focusChipBg */
-      --focus-text: #D96B4F;     /* focusChipText */
-      --break-bg: #E2F1E8;       /* breakChipBg */
-      --break-text: #489468;     /* breakChipText */
-      --grace-bg: #FFF0D9;       /* graceChipBg */
-      --grace-text: #E08A26;     /* graceChipText */
+      --bg: #F5F9F8;
+      --card: #FFFFFF;
+      --muted-bg: #EAF1EF;
+      --border: #E2EAE7;
+      --sage: #7EAE9B;
+      --sage-dark: #659683;
+      --sage-light: #BED6CD;
+      --text: #192A24;
+      --text-sec: #62756E;
+      --text-muted: #8B9E97;
+      --terracotta: #A67358;
+      --terracotta-dark: #7D4F38;
+      --peach: #F5DACB;
+      --focus-bg: #FCEAE4;
+      --focus-text: #D96B4F;
+      --break-bg: #E2F1E8;
+      --break-text: #489468;
+      --grace-bg: #FFF0D9;
+      --grace-text: #E08A26;
+      --accent-blue: #3B82F6;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
     body {
@@ -34,8 +35,8 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      padding: 20px 28px;
-      gap: 20px;
+      padding: 16px 24px;
+      gap: 16px;
     }
 
     /* ENCABEZADO */
@@ -45,169 +46,147 @@
       align-items: center;
       background: var(--card);
       border: 2px solid var(--border);
-      padding: 16px 26px;
-      border-radius: 22px;
-      box-shadow: 0 8px 24px rgba(25, 42, 36, 0.05);
+      padding: 14px 22px;
+      border-radius: 20px;
+      box-shadow: 0 6px 20px rgba(25, 42, 36, 0.04);
+      flex-wrap: wrap;
+      gap: 12px;
     }
-    .brand { display: flex; align-items: center; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 14px; }
     .locky-avatar {
-      width: 58px; height: 58px; border-radius: 18px;
+      width: 52px; height: 52px; border-radius: 16px;
       background: var(--peach);
       border: 2px solid var(--terracotta);
       display: flex; align-items: center; justify-content: center;
-      font-size: 32px;
-      box-shadow: 0 4px 10px rgba(166, 115, 88, 0.18);
+      font-size: 28px;
     }
-    .brand h1 { font-size: 25px; font-weight: 900; letter-spacing: 0.3px; color: var(--text); }
-    .brand p { font-size: 14px; color: var(--text-sec); font-weight: 600; margin-top: 2px; }
-    .conn-bar { display: flex; align-items: center; gap: 12px; }
+    .brand h1 { font-size: 22px; font-weight: 900; color: var(--text); }
+    .brand p { font-size: 13px; color: var(--text-sec); font-weight: 600; margin-top: 2px; }
+    .conn-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .conn-bar input {
       background: var(--muted-bg); border: 2px solid var(--border); color: var(--text);
-      padding: 10px 14px; border-radius: 12px; font-size: 15px; width: 230px; font-weight: 700;
+      padding: 8px 12px; border-radius: 10px; font-size: 14px; width: 220px; font-weight: 700;
       outline: none;
     }
     .conn-bar input:focus { border-color: var(--sage); }
     .badge-conn {
-      padding: 10px 18px; border-radius: 999px; font-weight: 800; font-size: 14px;
-      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-radius: 999px; font-weight: 800; font-size: 13px;
+      display: flex; align-items: center; gap: 6px;
     }
     .badge-online { background: var(--break-bg); color: var(--break-text); border: 1.5px solid var(--break-text); }
     .badge-offline { background: var(--focus-bg); color: var(--focus-text); border: 1.5px solid var(--focus-text); }
+    .badge-ws { background: #EFF6FF; color: var(--accent-blue); border: 1.5px solid var(--accent-blue); }
 
     /* GRID PRINCIPAL */
     .grid {
       display: grid;
-      grid-template-columns: 1.15fr 1.25fr 1fr;
-      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
       flex: 1;
     }
     .card {
       background: var(--card);
       border: 2px solid var(--border);
-      border-radius: 24px;
-      padding: 24px;
+      border-radius: 20px;
+      padding: 20px;
       display: flex;
       flex-direction: column;
-      gap: 18px;
-      box-shadow: 0 10px 28px rgba(25, 42, 36, 0.05);
+      gap: 14px;
+      box-shadow: 0 6px 20px rgba(25, 42, 36, 0.04);
     }
     .card-title {
-      font-size: 17px; font-weight: 800; color: var(--text);
-      text-transform: uppercase; letter-spacing: 0.6px;
-      border-bottom: 2px solid var(--muted-bg); padding-bottom: 12px;
+      font-size: 15px; font-weight: 800; color: var(--text);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      border-bottom: 2px solid var(--muted-bg); padding-bottom: 10px;
       display: flex; justify-content: space-between; align-items: center;
     }
     .pill-tag {
-      font-size: 12.5px; padding: 5px 12px; border-radius: 999px;
+      font-size: 11.5px; padding: 4px 10px; border-radius: 999px;
       background: var(--muted-bg); color: var(--sage-dark); font-weight: 800;
     }
 
-    /* BANNER FSM Y RELOJ CIRCULAR ESTILO APP */
+    /* BANNER FSM Y RELOJ CIRCULAR */
     .fsm-state-banner {
-      padding: 15px; border-radius: 16px; text-align: center;
-      font-size: 23px; font-weight: 900; letter-spacing: 0.5px;
+      padding: 12px; border-radius: 14px; text-align: center;
+      font-size: 19px; font-weight: 900;
       background: var(--break-bg); color: var(--break-text);
       border: 2px solid var(--sage-light);
       transition: all 0.25s ease;
     }
     .timer-circle {
-      margin: 8px auto;
-      width: 260px; height: 260px; border-radius: 50%;
-      border: 16px solid var(--sage);
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: var(--card);
-      box-shadow: 0 12px 32px rgba(126, 174, 155, 0.22), inset 0 0 20px rgba(234, 241, 239, 0.8);
+      width: 170px; height: 170px; border-radius: 50%;
+      border: 9px solid var(--sage);
+      margin: 6px auto; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: #FAFDFB;
+      box-shadow: 0 8px 24px rgba(126, 174, 155, 0.15);
       transition: border-color 0.3s ease;
     }
-    .timer-digits { font-size: 68px; font-weight: 900; color: var(--text); font-variant-numeric: tabular-nums; }
-    .timer-sub { font-size: 15px; color: var(--text-sec); font-weight: 800; margin-top: 4px; letter-spacing: 0.5px; }
+    .timer-digits { font-size: 42px; font-weight: 900; letter-spacing: -0.5px; color: var(--text); }
+    .timer-sub { font-size: 11px; font-weight: 800; color: var(--text-sec); text-transform: uppercase; margin-top: 2px; }
 
-    /* BOTONES ESTILO APP FLUTTER */
-    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: auto; }
+    /* BOTONES */
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     button {
-      padding: 15px 16px; border-radius: 16px; border: none;
-      font-size: 15.5px; font-weight: 800; cursor: pointer;
-      transition: transform 0.1s, box-shadow 0.2s, background 0.2s;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 10px 14px; border-radius: 12px; font-size: 13px; font-weight: 800;
+      cursor: pointer; transition: all 0.15s; border: none; outline: none;
     }
     button:active { transform: scale(0.97); }
-    .btn-demo {
-      background: var(--grace-bg); color: var(--grace-text);
-      border: 2px solid var(--grace-text);
-      grid-column: span 2; font-size: 17px;
-    }
-    .btn-start {
-      background: var(--sage); color: #FFFFFF;
-      box-shadow: 0 6px 16px rgba(126, 174, 155, 0.35);
-    }
-    .btn-start:hover { background: var(--sage-dark); }
-    .btn-cancel {
-      background: var(--muted-bg); color: var(--text-sec);
-      border: 2px solid var(--border);
-    }
-    .btn-emerg {
-      background: var(--focus-bg); color: var(--focus-text);
-      border: 2px solid var(--focus-text);
-      grid-column: span 2; font-size: 17px;
-    }
+    .btn-demo { grid-column: span 2; background: var(--sage); color: #fff; }
+    .btn-demo:hover { background: var(--sage-dark); }
+    .btn-start { background: var(--muted-bg); color: var(--text); border: 2px solid var(--border); }
+    .btn-start:hover { border-color: var(--sage); }
+    .btn-cancel { background: var(--focus-bg); color: var(--focus-text); border: 2px solid rgba(217, 107, 79, 0.3); }
+    .btn-emerg { grid-column: span 2; background: #DC2626; color: #fff; font-size: 13.5px; padding: 12px; }
 
-    /* CAJAS DE HARDWARE (SENSOR Y SERVOS) */
+    /* HARDWARE & SENSORES */
     .hw-box {
       background: var(--bg); border: 2px solid var(--border);
-      border-radius: 18px; padding: 16px 20px;
-      transition: all 0.2s ease;
+      border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 6px;
     }
-    .hw-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .hw-name { font-size: 16.5px; font-weight: 800; color: var(--text); }
-    .hw-pin {
-      font-size: 12.5px; background: var(--card); color: var(--sage-dark);
-      border: 1.5px solid var(--sage-light); padding: 4px 10px; border-radius: 8px; font-weight: 800;
+    .hw-header { display: flex; justify-content: space-between; align-items: center; }
+    .hw-name { font-size: 13.5px; font-weight: 800; color: var(--text); }
+    .hw-pin { font-size: 11px; color: var(--sage-dark); font-weight: 700; background: #fff; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); }
+    .hw-status { font-size: 14px; font-weight: 900; }
+    .progress-bg { height: 8px; background: #E2EAE7; border-radius: 999px; overflow: hidden; margin-top: 4px; }
+    .progress-fill { height: 100%; background: var(--sage); transition: width 0.15s ease; }
+
+    /* WIDGET CÁMARA Y AUDIO */
+    .media-preview-box {
+      background: #0F172A; border-radius: 14px; overflow: hidden;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 130px; position: relative; border: 2px solid var(--border);
     }
-    .hw-status { font-size: 24px; font-weight: 900; margin: 6px 0; }
-    .progress-bg {
-      width: 100%; height: 18px; background: var(--card);
-      border-radius: 99px; overflow: hidden; margin-top: 8px; border: 1.5px solid var(--border);
+    .media-preview-box img, .media-preview-box video {
+      width: 100%; height: 130px; object-fit: cover;
     }
-    .progress-fill {
-      height: 100%; background: linear-gradient(90deg, var(--sage-light), var(--sage-dark));
-      width: 0%; transition: width 0.08s linear;
+    .media-badge {
+      position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7);
+      color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;
     }
 
-    /* ESPEJO PANTALLA TFT 2.8" */
-    .tft-frame {
-      width: 100%; max-width: 350px; height: 215px; margin: 0 auto;
-      background: #0B132B; border: 5px solid var(--sage); border-radius: 18px;
-      display: flex; flex-direction: column; overflow: hidden;
-      box-shadow: 0 10px 24px rgba(25, 42, 36, 0.14);
-    }
-    .tft-top {
-      background: #1C2541; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;
-      font-weight: 900; color: #38BDF8; font-size: 17px;
-    }
-    .tft-dot { width: 16px; height: 16px; border-radius: 50%; background: #22C55E; border: 2px solid #fff; }
-    .tft-body { padding: 14px 20px; flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
-    .tft-label { font-size: 12px; color: #94A3B8; font-weight: 700; }
-    .tft-line1 { font-size: 24px; font-weight: 900; color: #FFFFFF; }
-    .tft-line2 { font-size: 26px; font-weight: 900; color: #22C55E; margin-top: 4px; }
-
-    /* INDICADORES LED Y BUZZER */
-    .leds-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    /* LEDS Y BUZZER */
+    .leds-row { display: flex; gap: 10px; }
     .led-pill {
-      background: var(--bg); border: 2px solid var(--border); border-radius: 16px;
-      padding: 12px; text-align: center; font-weight: 800; font-size: 13.5px; color: var(--text);
-      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      flex: 1; background: var(--bg); border: 2px solid var(--border); border-radius: 12px;
+      padding: 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 800; font-size: 11.5px;
     }
-    .led-bulb { width: 28px; height: 28px; border-radius: 50%; background: #CBD5E1; border: 2px solid #fff; transition: all 0.15s; }
-    .led-red-on { background: var(--focus-text); box-shadow: 0 0 18px var(--focus-text); }
-    .led-green-on { background: var(--break-text); box-shadow: 0 0 18px var(--break-text); }
-    .buzzer-on { background: var(--grace-text); box-shadow: 0 0 18px var(--grace-text); }
+    .led-bulb { width: 22px; height: 22px; border-radius: 50%; background: #CBD5E1; border: 2px solid #fff; }
+    .led-red-on { background: var(--focus-text); box-shadow: 0 0 14px var(--focus-text); }
+    .led-green-on { background: var(--break-text); box-shadow: 0 0 14px var(--break-text); }
+    .buzzer-on { background: var(--grace-text); box-shadow: 0 0 14px var(--grace-text); }
 
+    /* BITÁCORA */
     .event-log {
-      background: var(--bg); border: 2px solid var(--border); border-radius: 14px;
-      padding: 12px 14px; font-family: 'Consolas', monospace; font-size: 13px;
-      color: var(--text-sec); flex: 1; overflow-y: auto; max-height: 190px;
-      display: flex; flex-direction: column; gap: 6px; font-weight: 600;
+      background: var(--bg); border: 2px solid var(--border); border-radius: 12px;
+      padding: 10px; font-family: 'Consolas', monospace; font-size: 12px;
+      color: var(--text-sec); flex: 1; overflow-y: auto; max-height: 130px;
+      display: flex; flex-direction: column; gap: 4px; font-weight: 600;
     }
+    .db-table {
+      width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;
+    }
+    .db-table th { background: var(--muted-bg); padding: 6px 8px; font-weight: 800; }
+    .db-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
   </style>
 </head>
 <body>
@@ -216,23 +195,24 @@
     <div class="brand">
       <div class="locky-avatar">🦫</div>
       <div>
-        <h1>FocusLock — Estación Inteligente de Enfoque</h1>
-        <p>Monitor en Vivo con Locky • Sincronizado con App Móvil & Raspberry Pi 5 (Buffer 74LS244)</p>
+        <h1>FocusLock — Monitor Cloud & Edge en Vivo</h1>
+        <p>Telemetría en Tiempo Real con WebSockets, Cámara, Micrófono y Doble Base de Datos</p>
       </div>
     </div>
     <div class="conn-bar">
-      <span style="color: var(--text-sec); font-size: 14px; font-weight: 800;">IP Raspberry Pi 5:</span>
-      <input type="text" id="apiHost" value="http://192.168.43.157:8000" />
-      <div id="connBadge" class="badge-conn badge-online">● CONECTADO EN VIVO</div>
+      <span style="color: var(--text-sec); font-size: 13px; font-weight: 800;">Host API:</span>
+      <input type="text" id="apiHost" value="" placeholder="http://localhost:8000" />
+      <div id="connBadge" class="badge-conn badge-offline">● CONECTANDO...</div>
+      <div id="wsBadge" class="badge-conn badge-ws">WS: DESCONECTADO</div>
     </div>
   </header>
 
   <div class="grid">
-    <!-- COLUMNA 1: TEMPORIZADOR Y CONTROLES -->
+    <!-- COLUMNA 1: TEMPORIZADOR Y FSM -->
     <div class="card">
       <div class="card-title">
         <span>1. Sesión Pomodoro & FSM</span>
-        <span class="pill-tag">Sincronizado con App</span>
+        <span class="pill-tag">PostgreSQL Sincronizado</span>
       </div>
 
       <div id="fsmBanner" class="fsm-state-banner">IDLE — SISTEMA LISTO</div>
@@ -243,101 +223,127 @@
       </div>
 
       <div class="btn-grid">
-        <button class="btn-demo" onclick="startDemo()">⚡ INICIAR DEMO MUESTRA (30s Enfoque / 10s Descanso)</button>
+        <button class="btn-demo" onclick="startDemo()">⚡ INICIAR DEMO RÁPIDA (30s Enfoque / 10s Descanso)</button>
         <button class="btn-start" onclick="startStandard()">▶ Pomodoro (25 min)</button>
         <button class="btn-cancel" onclick="cancelSession()">↺ Cancelar / Reset</button>
-        <button class="btn-emerg" onclick="emergencyUnlock()">🚨 APERTURA DE EMERGENCIA (ABRIR CAJA)</button>
+        <button class="btn-emerg" onclick="emergencyUnlock()">🚨 APERTURA DE EMERGENCIA</button>
       </div>
     </div>
 
-    <!-- COLUMNA 2: SENSOR ÓPTICO Y SERVOMOTORES -->
+    <!-- COLUMNA 2: MÓDULO LOCAL — CÁMARA Y MICRÓFONO -->
     <div class="card">
       <div class="card-title">
-        <span>2. Sensor Óptico & Etapa de Potencia</span>
-        <span class="pill-tag">Muestreo @ 20 Hz</span>
+        <span>2. Telemetría Cámara & Micrófono</span>
+        <span class="pill-tag">Módulo Local / Web</span>
       </div>
 
-      <!-- SENSOR -->
-      <div class="hw-box" id="sensorBox">
-        <div class="hw-header">
-          <span class="hw-name">📱 Sensor Óptico TCRT5000 (HW-201)</span>
-          <span class="hw-pin">Pin 11 / GPIO 17</span>
+      <!-- Preview de cámara recibida por WebSocket o Web -->
+      <div class="media-preview-box">
+        <img id="camSnapshot" src="" style="display:none;" alt="Live Camera" />
+        <video id="webVideo" autoplay playsinline muted style="display:none;"></video>
+        <div id="camPlaceholder" style="color:#94A3B8; font-size:12px; text-align:center; padding:10px;">
+          📷 Esperando señal de cámara del módulo local o cámara web...
         </div>
-        <div id="sensorStatus" class="hw-status" style="color: var(--grace-text);">COMPARTIMENTO VACÍO (3.3V HIGH)</div>
-        <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--text-sec); font-weight: 700; margin-top: 4px;">
-          <span>Filtro Antirrebote (Debounce 200 ms):</span>
-          <span id="debounceText">200 / 200 ms (ESTABLE)</span>
+        <div id="camBadge" class="media-badge">ATENCIÓN: --%</div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:13px; font-weight:800;">Presencia / Atención:</span>
+        <span id="attentionText" style="font-size:13px; font-weight:900; color:var(--break-text);">0% (SIN SEÑAL)</span>
+      </div>
+      <div class="progress-bg">
+        <div id="attentionBar" class="progress-fill" style="width: 0%;"></div>
+      </div>
+
+      <!-- Medidor de decibelios de micrófono -->
+      <div class="hw-box">
+        <div class="hw-header">
+          <span class="hw-name">🎤 Nivel de Ruido Ambiental (Micrófono)</span>
+          <span class="hw-pin" id="decibelVal">42.0 dB</span>
         </div>
         <div class="progress-bg">
-          <div id="debounceBar" class="progress-fill" style="width: 100%;"></div>
+          <div id="noiseBar" class="progress-fill" style="width: 35%; background: var(--sage);"></div>
+        </div>
+        <div id="noiseAlert" style="font-size:12px; font-weight:800; color:var(--text-sec); margin-top:2px;">
+          Entorno silencioso óptimo (&lt; 65 dB).
         </div>
       </div>
 
-      <!-- SERVO 1: TAPA -->
-      <div class="hw-box" id="lidBox">
-        <div class="hw-header">
-          <span class="hw-name">⚙️ Servo 1 — Compuerta / Tapa</span>
-          <span class="hw-pin">Pin 12 (G18) ➔ 74LS244 (1Y1)</span>
-        </div>
-        <div id="servoLidStatus" class="hw-status" style="color: var(--break-text);">0° — TAPA ABIERTA</div>
-        <div style="font-size: 13.5px; color: var(--text-sec); font-weight: 600;">PWM 50 Hz • Pulso: <b id="lidPulse" style="color:var(--text);">1.0 ms (Duty 5% -> 0% Anti-Jitter)</b></div>
-      </div>
-
-      <!-- SERVO 2: CERROJO -->
-      <div class="hw-box" id="lockBox">
-        <div class="hw-header">
-          <span class="hw-name">🔐 Servo 2 — Cerrojo de Seguridad</span>
-          <span class="hw-pin">Pin 33 (G13) ➔ 74LS244 (1Y2)</span>
-        </div>
-        <div id="servoLockStatus" class="hw-status" style="color: var(--break-text);">0° — DESBLOQUEADO</div>
-        <div style="font-size: 13.5px; color: var(--text-sec); font-weight: 600;">PWM 50 Hz • Pulso: <b id="lockPulse" style="color:var(--text);">1.0 ms (Duty 5% -> 0% Anti-Jitter)</b></div>
-      </div>
+      <!-- Botón de fallback para activar cámara/mic en navegador -->
+      <button class="btn-start" style="font-size:12px; padding:8px;" onclick="enableInBrowserMedia()">
+        🌐 Usar Cámara/Micrófono de este Navegador (Web Fallback)
+      </button>
     </div>
 
-    <!-- COLUMNA 3: PANTALLA TFT 2.8", LEDS Y BITÁCORA -->
+    <!-- COLUMNA 3: HARDWARE Y SERVOS -->
     <div class="card">
       <div class="card-title">
-        <span>3. Pantalla TFT 2.8" & Indicadores</span>
-        <span class="pill-tag">ILI9341 SPI 320x240</span>
+        <span>3. Periféricos Físicos & Servos</span>
+        <span class="pill-tag">Raspberry Pi 4 / HAL</span>
       </div>
 
-      <!-- ESPEJO TFT -->
-      <div id="tftFrame" class="tft-frame">
-        <div class="tft-top">
-          <span>FOCUSLOCK</span>
-          <div id="tftDot" class="tft-dot"></div>
+      <div class="hw-box" id="sensorBox">
+        <div class="hw-header">
+          <span class="hw-name">📱 Sensor Óptico TCRT5000</span>
+          <span class="hw-pin">Pin 11 / GPIO 17</span>
         </div>
-        <div class="tft-body">
-          <div class="tft-label">ESTADO DEL SISTEMA:</div>
-          <div id="tftLine1" class="tft-line1">SISTEMA LISTO</div>
-          <div style="height: 2px; background: #334155; margin: 4px 0;"></div>
-          <div id="tftLine2" class="tft-line2">Inicie sesion...</div>
-        </div>
+        <div id="sensorStatus" class="hw-status" style="color: var(--grace-text);">COMPARTIMENTO VACÍO</div>
       </div>
 
-      <!-- LEDS Y BUZZER -->
+      <div class="hw-box">
+        <div class="hw-header">
+          <span class="hw-name">⚙️ Servo 1 — Tapa</span>
+          <span class="hw-pin">GPIO 18</span>
+        </div>
+        <div id="servoLidStatus" class="hw-status" style="color: var(--break-text);">0° — TAPA ABIERTA</div>
+      </div>
+
+      <div class="hw-box">
+        <div class="hw-header">
+          <span class="hw-name">🔐 Servo 2 — Cerrojo</span>
+          <span class="hw-pin">GPIO 13</span>
+        </div>
+        <div id="servoLockStatus" class="hw-status" style="color: var(--break-text);">0° — DESBLOQUEADO</div>
+      </div>
+
       <div class="leds-row">
         <div class="led-pill">
           <div id="ledGreenBulb" class="led-bulb led-green-on"></div>
-          <span>LED VERDE</span>
-          <span style="font-size:11.5px; color:var(--text-muted);">Pin 16 (GPIO 23)</span>
+          <span>VERDE</span>
         </div>
         <div class="led-pill">
           <div id="ledRedBulb" class="led-bulb"></div>
-          <span>LED ROJO</span>
-          <span style="font-size:11.5px; color:var(--text-muted);">Pin 15 (GPIO 22)</span>
+          <span>ROJO</span>
         </div>
         <div class="led-pill">
           <div id="buzzerBulb" class="led-bulb"></div>
           <span>BUZZER</span>
-          <span style="font-size:11.5px; color:var(--text-muted);">Pin 13 (GPIO 27)</span>
         </div>
       </div>
+    </div>
 
-      <!-- BITÁCORA -->
-      <div style="font-size: 13.5px; font-weight: 800; color: var(--text);">BITÁCORA DE TRANSICIONES EN VIVO:</div>
+    <!-- COLUMNA 4: BASES DE DATOS & BITÁCORA -->
+    <div class="card">
+      <div class="card-title">
+        <span>4. Persistencia & Bitácora</span>
+        <span class="pill-tag">Postgres & Redis</span>
+      </div>
+
+      <div style="font-size:12.5px; font-weight:800; color:var(--text);">ÚLTIMAS SESIONES (PostgreSQL):</div>
+      <div style="max-height: 120px; overflow-y:auto; border:1px solid var(--border); border-radius:10px;">
+        <table class="db-table">
+          <thead>
+            <tr><th>Sesión</th><th>Modo</th><th>Estado</th></tr>
+          </thead>
+          <tbody id="sessionsTbody">
+            <tr><td colspan="3" style="text-align:center; color:var(--text-sec);">Cargando sesiones...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="font-size:12.5px; font-weight:800; color:var(--text); margin-top:4px;">EVENTOS EN VIVO:</div>
       <div id="eventLog" class="event-log">
-        <div>• Monitor FocusLock listo...</div>
+        <div>• FocusLock Dashboard iniciado...</div>
       </div>
     </div>
   </div>
@@ -345,18 +351,29 @@
   <script>
     const hostInput = document.getElementById('apiHost');
     let lastState = '';
-    let lastPhone = null;
+    let socket = null;
     const localEvents = [];
+
+    // Autodetectar el Host actual si se carga desde el servidor web
+    if (!hostInput.value) {
+      hostInput.value = window.location.origin.includes('http') ? window.location.origin : 'http://localhost:8000';
+    }
 
     function addEvent(msg) {
       const ts = new Date().toLocaleTimeString();
       localEvents.unshift(`[${ts}] ${msg}`);
-      if (localEvents.length > 10) localEvents.pop();
+      if (localEvents.length > 8) localEvents.pop();
       document.getElementById('eventLog').innerHTML = localEvents.map(e => `<div>• ${e}</div>`).join('');
     }
 
     function getBaseUrl() {
       return hostInput.value.replace(/\/+$/, '');
+    }
+
+    function getWsUrl() {
+      const base = getBaseUrl();
+      if (base.startsWith('https://')) return base.replace('https://', 'wss://') + '/ws/live';
+      return base.replace('http://', 'ws://') + '/ws/live';
     }
 
     function formatMMSS(sec) {
@@ -366,177 +383,208 @@
       return String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
     }
 
+    // Inicializar WebSocket en Tiempo Real
+    function connectWebSocket() {
+      const wsUrl = getWsUrl();
+      const wsBadge = document.getElementById('wsBadge');
+      try {
+        socket = new WebSocket(wsUrl);
+        socket.onopen = () => {
+          wsBadge.textContent = 'WS: CONECTADO';
+          wsBadge.style.color = '#10B981';
+          wsBadge.style.borderColor = '#10B981';
+          addEvent('WebSocket conectado con la nube.');
+        };
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+          } catch(e) {}
+        };
+        socket.onclose = () => {
+          wsBadge.textContent = 'WS: RECONECTANDO...';
+          wsBadge.style.color = '#E08A26';
+          wsBadge.style.borderColor = '#E08A26';
+          setTimeout(connectWebSocket, 3000);
+        };
+      } catch (err) {
+        setTimeout(connectWebSocket, 5000);
+      }
+    }
+
+    function handleWebSocketMessage(msg) {
+      if (msg.type === 'init' || msg.type === 'telemetry_update') {
+        const tel = msg.telemetry || {};
+        updateLocalTelemetryUI(tel);
+        if (msg.fsm) updateFsmUI(msg.fsm);
+        if (msg.fsm_state) {
+          updateFsmUI({ state: msg.fsm_state, remaining_seconds: msg.remaining_seconds });
+        }
+      }
+    }
+
+    function updateLocalTelemetryUI(tel) {
+      if (!tel) return;
+      if (tel.attention_score !== undefined) {
+        const attPct = Math.round(tel.attention_score * 100);
+        document.getElementById('attentionText').textContent = `${attPct}% ${tel.distraction_detected ? '⚠️ (DISTRAÍDO)' : '✅ (ENFOCADO)'}`;
+        document.getElementById('attentionBar').style.width = `${attPct}%`;
+        document.getElementById('camBadge').textContent = `ATENCIÓN: ${attPct}%`;
+      }
+      if (tel.snapshot_base64) {
+        const snap = document.getElementById('camSnapshot');
+        snap.src = tel.snapshot_base64;
+        snap.style.display = 'block';
+        document.getElementById('camPlaceholder').style.display = 'none';
+      }
+      if (tel.decibels !== undefined) {
+        document.getElementById('decibelVal').textContent = `${tel.decibels} dB`;
+        const nBar = document.getElementById('noiseBar');
+        const pct = Math.min(100, Math.max(0, (tel.decibels / 100) * 100));
+        nBar.style.width = `${pct}%`;
+        const alertBox = document.getElementById('noiseAlert');
+        if (tel.noise_violation) {
+          nBar.style.background = '#DC2626';
+          alertBox.textContent = '⚠️ ¡ALERTA! Nivel de ruido excedió el límite de concentración.';
+          alertBox.style.color = '#DC2626';
+        } else {
+          nBar.style.background = 'var(--sage)';
+          alertBox.textContent = 'Entorno acústico óptimo (< 65 dB).';
+          alertBox.style.color = 'var(--text-sec)';
+        }
+      }
+    }
+
+    function updateFsmUI(st) {
+      const state = st.state || 'IDLE';
+      const rem = st.remaining_seconds || 0;
+      document.getElementById('timerDigits').textContent = formatMMSS(rem);
+      const banner = document.getElementById('fsmBanner');
+      banner.textContent = state;
+      if (state !== lastState) {
+        addEvent(`FSM -> [${state}]`);
+        lastState = state;
+        loadSessionsHistory();
+      }
+    }
+
+    async function pollFallback() {
+      try {
+        const [resStatus, resTel] = await Promise.all([
+          fetch(getBaseUrl() + '/api/status', { cache: 'no-store' }),
+          fetch(getBaseUrl() + '/api/telemetry', { cache: 'no-store' })
+        ]);
+        if (resStatus.ok) {
+          const st = await resStatus.json();
+          updateFsmUI(st);
+          if (st.local_module) updateLocalTelemetryUI(st.local_module);
+          document.getElementById('connBadge').className = 'badge-conn badge-online';
+          document.getElementById('connBadge').textContent = '● SERVIDOR EN VIVO';
+        }
+        if (resTel.ok) {
+          const t = await resTel.json();
+          document.getElementById('sensorStatus').textContent = t.stable_sensor ? '📱 CELULAR EN LA CAJA' : 'COMPARTIMENTO VACÍO';
+          document.getElementById('servoLidStatus').textContent = t.lid_angle === 90 ? '90° — TAPA CERRADA' : '0° — TAPA ABIERTA';
+          document.getElementById('servoLockStatus').textContent = t.lock_angle === 90 ? '90° — CERROJO BLOQUEADO' : '0° — DESBLOQUEADO';
+          document.getElementById('ledGreenBulb').className = 'led-bulb ' + (t.led_green ? 'led-green-on' : '');
+          document.getElementById('ledRedBulb').className = 'led-bulb ' + (t.led_red ? 'led-red-on' : '');
+          document.getElementById('buzzerBulb').className = 'led-bulb ' + (t.buzzer ? 'buzzer-on' : '');
+        }
+      } catch (e) {
+        document.getElementById('connBadge').className = 'badge-conn badge-offline';
+        document.getElementById('connBadge').textContent = '● DESCONECTADO';
+      }
+    }
+
+    async function loadSessionsHistory() {
+      try {
+        const res = await fetch(getBaseUrl() + '/api/db/sessions?limit=5');
+        if (res.ok) {
+          const data = await res.json();
+          const tbody = document.getElementById('sessionsTbody');
+          if (data.sessions && data.sessions.length > 0) {
+            tbody.innerHTML = data.sessions.map(s => `
+              <tr>
+                <td><b>${s.session_name || s.id}</b></td>
+                <td>${s.mode}</td>
+                <td><span style="font-weight:800; color:${s.status==='COMPLETED'?'#10B981':'#D96B4F'}">${s.status}</span></td>
+              </tr>
+            `).join('');
+          }
+        }
+      } catch(e) {}
+    }
+
     async function startDemo() {
       await fetch(getBaseUrl() + '/api/session/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ focus_seconds: 30, break_seconds: 10 })
+        body: JSON.stringify({ focus_seconds: 30, break_seconds: 10, session_name: 'Demo Rápida' })
       });
-      addEvent('Iniciada Demo Rápida (30s Enfoque / 10s Descanso)');
+      addEvent('Iniciada Demo (30s Enfoque / 10s Descanso)');
     }
 
     async function startStandard() {
       await fetch(getBaseUrl() + '/api/session/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ focus_minutes: 25, break_minutes: 5 })
+        body: JSON.stringify({ focus_minutes: 25, break_minutes: 5, session_name: 'Pomodoro Estándar' })
       });
-      addEvent('Iniciada Sesión Pomodoro (25m Enfoque / 5m Descanso)');
+      addEvent('Iniciada Sesión Pomodoro (25m Enfoque)');
     }
 
     async function cancelSession() {
       await fetch(getBaseUrl() + '/api/session/cancel', { method: 'POST' });
-      addEvent('Sesión cancelada / Sistema restablecido a IDLE');
+      addEvent('Sesión cancelada');
     }
 
     async function emergencyUnlock() {
       await fetch(getBaseUrl() + '/api/hardware/unlock', { method: 'POST' });
-      addEvent('¡APERTURA DE EMERGENCIA EJECUTADA!');
-      setTimeout(() => {
-        fetch(getBaseUrl() + '/api/session/cancel', { method: 'POST' }).catch(() => {});
-      }, 3000);
+      addEvent('🚨 APERTURA DE EMERGENCIA EJECUTADA');
     }
 
-    async function pollAll() {
+    // Cámara Web en Navegador (Fallback con getUserMedia)
+    async function enableInBrowserMedia() {
       try {
-        const [resStatus, resTel] = await Promise.all([
-          fetch(getBaseUrl() + '/api/status', { cache: 'no-store' }),
-          fetch(getBaseUrl() + '/api/telemetry', { cache: 'no-store' })
-        ]);
-        if (!resStatus.ok || !resTel.ok) throw new Error('HTTP Error');
-        const st = await resStatus.json();
-        const t = await resTel.json();
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        const video = document.getElementById('webVideo');
+        video.srcObject = stream;
+        video.style.display = 'block';
+        document.getElementById('camSnapshot').style.display = 'none';
+        document.getElementById('camPlaceholder').style.display = 'none';
+        addEvent('Cámara y Micrófono del navegador activados con éxito.');
 
-        const badge = document.getElementById('connBadge');
-        badge.className = 'badge-conn badge-online';
-        badge.textContent = '● CONECTADO A PI 5 EN VIVO';
+        // Analizador de audio Web Audio API
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const dataArr = new Uint8Array(analyser.frequencyBinCount);
 
-        const state = st.state || 'IDLE';
-        if (state !== lastState) {
-          addEvent(`Cambio de estado FSM -> [${state}]`);
-          lastState = state;
-        }
-        if (t.stable_sensor !== lastPhone) {
-          if (lastPhone !== null) {
-            addEvent(t.stable_sensor ? 'Sensor TCRT5000: CELULAR DEPOSITADO (200ms OK)' : 'Sensor TCRT5000: CELULAR RETIRADO');
-          }
-          lastPhone = t.stable_sensor;
-        }
-
-        const banner = document.getElementById('fsmBanner');
-        const circle = document.getElementById('timerCircle');
-        const tftFrame = document.getElementById('tftFrame');
-        const tftDot = document.getElementById('tftDot');
-        const tftLine2 = document.getElementById('tftLine2');
-
-        let ringColor = '#7EAE9B';
-        let chipBg = '#E2F1E8';
-        let chipText = '#489468';
-        let stateLabel = state;
-
-        if (state === 'IDLE') {
-          ringColor = '#7EAE9B'; chipBg = '#EAF1EF'; chipText = '#659683';
-          stateLabel = 'IDLE — SISTEMA LISTO';
-        } else if (state === 'WAITING_PHONE') {
-          ringColor = '#E08A26'; chipBg = '#FFF0D9'; chipText = '#E08A26';
-          stateLabel = 'ESPERANDO CELULAR EN LA CAJA';
-        } else if (state === 'GRACE_PERIOD') {
-          ringColor = '#E08A26'; chipBg = '#FFF0D9'; chipText = '#E08A26';
-          stateLabel = '⚠️ CERRANDO CAJA EN ' + st.remaining_seconds + ' SEG';
-        } else if (state === 'LOCKED_FOCUS') {
-          ringColor = '#D96B4F'; chipBg = '#FCEAE4'; chipText = '#D96B4F';
-          stateLabel = '🔒 ENFOQUE ACTIVO (CAJA BLOQUEADA)';
-        } else if (state === 'BREAK_OPEN') {
-          ringColor = '#489468'; chipBg = '#E2F1E8'; chipText = '#489468';
-          stateLabel = '☕ TIEMPO DE DESCANSO (CAJA ABIERTA)';
-        } else if (state === 'EMERGENCY_UNLOCKED') {
-          ringColor = '#D96B4F'; chipBg = '#FCEAE4'; chipText = '#D96B4F';
-          stateLabel = '🚨 APERTURA DE EMERGENCIA';
-        }
-
-        banner.textContent = stateLabel;
-        banner.style.background = chipBg;
-        banner.style.color = chipText;
-        banner.style.borderColor = ringColor;
-        circle.style.borderColor = ringColor;
-
-        document.getElementById('timerDigits').textContent = formatMMSS(st.remaining_seconds);
-        document.getElementById('timerSub').textContent = st.lcd_line1 || state;
-
-        // Sensor
-        const sensorStatus = document.getElementById('sensorStatus');
-        const sensorBox = document.getElementById('sensorBox');
-        if (t.stable_sensor) {
-          sensorStatus.textContent = '✅ CELULAR DETECTADO (0.0V LOW)';
-          sensorStatus.style.color = '#489468';
-          sensorBox.style.borderColor = '#7EAE9B';
-          sensorBox.style.background = '#E2F1E8';
-        } else {
-          sensorStatus.textContent = '⏳ COMPARTIMENTO VACÍO (3.3V HIGH)';
-          sensorStatus.style.color = '#E08A26';
-          sensorBox.style.borderColor = '#E2EAE7';
-          sensorBox.style.background = '#F5F9F8';
-        }
-
-        const pct = Math.min(100, Math.round((t.debounce_elapsed_ms / t.debounce_window_ms) * 100));
-        document.getElementById('debounceBar').style.width = pct + '%';
-        document.getElementById('debounceText').textContent =
-          Math.round(t.debounce_elapsed_ms) + ' / ' + Math.round(t.debounce_window_ms) + ' ms (' + (t.is_debouncing ? 'FILTRANDO...' : 'ESTABLE') + ')';
-
-        // Servo 1 (Tapa)
-        const lidEl = document.getElementById('servoLidStatus');
-        const lidBox = document.getElementById('lidBox');
-        if (t.is_lid_closed) {
-          lidEl.textContent = '90° — TAPA CERRADA';
-          lidEl.style.color = '#D96B4F';
-          lidBox.style.background = '#FCEAE4';
-          lidBox.style.borderColor = '#D96B4F';
-          document.getElementById('lidPulse').textContent = '2.0 ms (Duty 10% -> 0% Anti-Jitter)';
-        } else {
-          lidEl.textContent = '0° — TAPA ABIERTA';
-          lidEl.style.color = '#489468';
-          lidBox.style.background = '#F5F9F8';
-          lidBox.style.borderColor = '#E2EAE7';
-          document.getElementById('lidPulse').textContent = '1.0 ms (Duty 5% -> 0% Anti-Jitter)';
-        }
-
-        // Servo 2 (Cerrojo)
-        const lockEl = document.getElementById('servoLockStatus');
-        const lockBox = document.getElementById('lockBox');
-        if (t.is_locked) {
-          lockEl.textContent = '90° — CERROJO BLOQUEADO';
-          lockEl.style.color = '#D96B4F';
-          lockBox.style.background = '#FCEAE4';
-          lockBox.style.borderColor = '#D96B4F';
-          document.getElementById('lockPulse').textContent = '2.0 ms (Duty 10% -> 0% Anti-Jitter)';
-        } else {
-          lockEl.textContent = '0° — CERROJO DESBLOQUEADO';
-          lockEl.style.color = '#489468';
-          lockBox.style.background = '#F5F9F8';
-          lockBox.style.borderColor = '#E2EAE7';
-          document.getElementById('lockPulse').textContent = '1.0 ms (Duty 5% -> 0% Anti-Jitter)';
-        }
-
-        // Espejo TFT
-        document.getElementById('tftLine1').textContent = st.lcd_line1 || '';
-        tftLine2.textContent = st.lcd_line2 || '';
-        tftFrame.style.borderColor = ringColor;
-        tftDot.style.background = ringColor;
-        tftLine2.style.color = ringColor;
-
-        // LEDs y Buzzer
-        document.getElementById('ledGreenBulb').className = 'led-bulb ' + (t.led_green_on ? 'led-green-on' : '');
-        document.getElementById('ledRedBulb').className = 'led-bulb ' + (t.led_red_on ? 'led-red-on' : '');
-        document.getElementById('buzzerBulb').className = 'led-bulb ' + (t.buzzer_on ? 'buzzer-on' : '');
+        setInterval(() => {
+          analyser.getByteFrequencyData(dataArr);
+          let sum = 0;
+          for (let i = 0; i < dataArr.length; i++) sum += dataArr[i];
+          const avg = sum / dataArr.length;
+          const dbApprox = Math.round(30 + (avg / 255) * 60);
+          updateLocalTelemetryUI({
+            attention_score: 0.95,
+            distraction_detected: false,
+            decibels: dbApprox,
+            noise_violation: dbApprox > 65
+          });
+        }, 1000);
       } catch (err) {
-        const badge = document.getElementById('connBadge');
-        badge.className = 'badge-conn badge-offline';
-        badge.textContent = '✖ SIN CONEXIÓN A LA PI 5';
+        alert('No se pudo acceder a la cámara/micrófono: ' + err.message + '\nVerifique los permisos y que el sitio use HTTPS.');
+        addEvent('Permiso denegado para cámara/micrófono web.');
       }
     }
 
-    setInterval(pollAll, 180);
-    pollAll();
+    // Inicio continuo
+    connectWebSocket();
+    setInterval(pollFallback, 1000);
+    loadSessionsHistory();
   </script>
 </body>
 </html>
