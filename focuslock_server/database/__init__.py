@@ -1,5 +1,5 @@
 """
-FocusLock — Capa de Persistencia y Bases de Datos (PostgreSQL & Redis)
+FocusLock — Capa de Persistencia y Bases de Datos (PostgreSQL, Redis & MongoDB)
 """
 from .postgres import (
     init_postgres,
@@ -20,6 +20,13 @@ from .redis_store import (
     publish_telemetry_event,
     subscribe_telemetry_events,
 )
+from .mongodb import (
+    init_mongodb,
+    is_mongodb_active,
+    save_mongo_telemetry,
+    save_mongo_session,
+    get_mongo_recent_telemetry,
+)
 
 __all__ = [
     "init_postgres",
@@ -37,4 +44,9 @@ __all__ = [
     "get_recent_noise_samples",
     "publish_telemetry_event",
     "subscribe_telemetry_events",
+    "init_mongodb",
+    "is_mongodb_active",
+    "save_mongo_telemetry",
+    "save_mongo_session",
+    "get_mongo_recent_telemetry",
 ]

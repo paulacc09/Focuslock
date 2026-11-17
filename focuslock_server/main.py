@@ -19,11 +19,22 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Set
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 from hardware import HardwareController
 from fsm import FocusLockFSM
 from database import (
     init_postgres,
     init_redis,
+    init_mongodb,
+    is_mongodb_active,
+    save_mongo_telemetry,
+    save_mongo_session,
+    get_mongo_recent_telemetry,
     save_session,
     update_session_status,
     log_focus_event,
@@ -103,10 +114,11 @@ if FASTAPI_AVAILABLE:
 
     @app.on_event("startup")
     async def startup_event() -> None:
-        """Inicializa bases de datos (PostgreSQL & Redis) y el bus Pub/Sub."""
+        """Inicializa bases de datos (PostgreSQL, Redis & MongoDB) y el bus Pub/Sub."""
         logger.info("Iniciando servicios de base de datos...")
         init_postgres()
         init_redis()
+        init_mongodb()
 
         # Conectar suscriptor de Redis Pub/Sub para que mensajes de otras réplicas
         # se difundan a los WebSockets conectados a esta instancia
@@ -136,6 +148,7 @@ if FASTAPI_AVAILABLE:
             "databases": {
                 "postgres": "Active (Relational Storage)",
                 "redis": "Active (Real-time NoSQL & Pub/Sub)",
+                "mongodb": "Active (Document Store)" if is_mongodb_active() else "Standby (Awaiting MONGODB_URI)",
             },
             "websockets": {
                 "local_module": "/ws/telemetry",
@@ -186,14 +199,16 @@ if FASTAPI_AVAILABLE:
 
         # Persistir en Base de Datos 1 (PostgreSQL)
         total_sec = req.focus_seconds or ((req.focus_minutes or 25) * 60)
-        save_session({
+        session_dict = {
             "id": s_id,
             "session_name": req.session_name or f"Sesión {mode}",
             "mode": "demo" if req.focus_seconds else "standard",
             "target_minutes": req.focus_minutes or 25,
             "remaining_seconds": total_sec,
             "status": fsm.state.value,
-        })
+        }
+        save_session(session_dict)
+        save_mongo_session(session_dict)
         log_focus_event(s_id, "SESSION_START", {"mode": mode, "seconds": total_sec})
 
         return {
@@ -277,11 +292,24 @@ if FASTAPI_AVAILABLE:
             "samples": samples,
         }
 
+    @app.get("/api/db/mongodb")
+    def get_mongodb_status() -> Dict[str, Any]:
+        """Estado y últimos documentos almacenados en MongoDB."""
+        active = is_mongodb_active()
+        recent = get_mongo_recent_telemetry(limit=15) if active else []
+        return {
+            "database": "MongoDB (NoSQL Document Store)",
+            "connected": active,
+            "count": len(recent),
+            "documents": recent,
+        }
+
     @app.post("/api/telemetry/report")
     def post_telemetry_report(payload: LocalTelemetryPayload) -> Dict[str, Any]:
         """Endpoint REST alternativo para reporte de módulo local."""
         data = payload.dict()
         set_live_telemetry(data)
+        save_mongo_telemetry(data)
         push_noise_sample({
             "decibels": data["decibels"],
             "violation": data["noise_violation"],
@@ -313,8 +341,9 @@ if FASTAPI_AVAILABLE:
                 except json.JSONDecodeError:
                     continue
 
-                # 1. Guardar en Base de Datos 2: Redis
+                # 1. Guardar en Base de Datos: Redis y MongoDB
                 set_live_telemetry(payload)
+                save_mongo_telemetry(payload)
                 if "decibels" in payload:
                     push_noise_sample({
                         "decibels": payload.get("decibels", 0.0),

@@ -131,6 +131,12 @@ Gestiona el estado en tiempo real:
 - **`focuslock:noise:history`**: Lista circular con las últimas lecturas de decibelios.
 - **`focuslock:events`**: Canal Pub/Sub para que múltiples réplicas detrás del balanceador Nginx compartan eventos de WebSockets en tiempo real.
 
+### 3. MongoDB (NoSQL Documental)
+Gestiona el historial detallado de telemetría y documentos:
+- **`telemetry_logs`**: Colección con registros completos de atención, presencia, snapshots e infracciones acústicas.
+- **`sessions`**: Colección de documentos de sesiones con esquemas flexibles.
+*Nota de Resiliencia:* La conexión es opcional y no intrusiva; si `MONGODB_URI` no se define, el servidor funciona al 100% sin alertas ni interrupciones.
+
 ---
 
 ## ⚖️ Balanceador de Carga con Docker Compose
