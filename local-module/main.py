@@ -207,7 +207,7 @@ class CameraProcessor:
                 except Exception:
                     snapshot_b64 = None
 
-                return round(attention_score, 2), face_detected, distraction_detected, snapshot_b64
+                return round(float(attention_score), 2), bool(face_detected), bool(distraction_detected), snapshot_b64
 
         # Modo simulador biométrico (fluctuación realista)
         is_focused = random.random() > 0.15
@@ -258,8 +258,8 @@ class MicrophoneProcessor:
                     db = round(20 * math.log10(rms) + 90, 1)
                 else:
                     db = 32.0
-                db = max(30.0, min(110.0, db))
-                is_violation = db > self.limit_db
+                db = float(max(30.0, min(110.0, float(db))))
+                is_violation = bool(db > self.limit_db)
                 return db, is_violation
             except Exception:
                 pass

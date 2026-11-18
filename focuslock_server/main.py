@@ -27,6 +27,7 @@ except Exception:
 
 from hardware import HardwareController
 from fsm import FocusLockFSM
+from mqtt_client import FocusLockMQTTClient
 from database import (
     init_postgres,
     init_redis,
@@ -58,6 +59,23 @@ logger = logging.getLogger("FocusLock.Server")
 # Instancias unificadas de Hardware (HAL) y Máquina de Estados (FSM)
 hw = HardwareController()
 fsm = FocusLockFSM(hardware=hw)
+
+def handle_mqtt_command(cmd: Dict[str, Any]) -> None:
+    """Ejecuta comandos recibidos desde el broker Eclipse Mosquitto (tópico focuslock/commands)."""
+    action = str(cmd.get("action", "")).lower().strip()
+    if action == "start":
+        fsm.start_session(
+            focus_minutes=int(cmd.get("focus_minutes", 25)),
+            break_minutes=int(cmd.get("break_minutes", 5)),
+            focus_seconds=cmd.get("focus_seconds"),
+            break_seconds=cmd.get("break_seconds"),
+        )
+    elif action == "cancel":
+        fsm.cancel_session()
+    elif action in ("emergency", "emergency_unlock", "unlock"):
+        fsm.emergency_unlock()
+
+mqtt_client = FocusLockMQTTClient(on_command=handle_mqtt_command)
 
 # Conjunto de clientes WebSocket conectados para el Dashboard Web en vivo
 active_web_clients: Set[Any] = set()
@@ -114,11 +132,31 @@ if FASTAPI_AVAILABLE:
 
     @app.on_event("startup")
     async def startup_event() -> None:
-        """Inicializa bases de datos (PostgreSQL, Redis & MongoDB) y el bus Pub/Sub."""
-        logger.info("Iniciando servicios de base de datos...")
+        """Inicializa bases de datos (PostgreSQL, Redis & MongoDB), Mosquitto MQTT y el bus Pub/Sub."""
+        logger.info("Iniciando servicios de base de datos y MQTT...")
         init_postgres()
         init_redis()
         init_mongodb()
+        mqtt_client.start()
+
+        # Tarea en segundo plano que publica estado FSM y telemetría hardware en Mosquitto cada 1s
+        async def mqtt_telemetry_loop() -> None:
+            last_state_val = None
+            while True:
+                try:
+                    st = fsm.get_status()
+                    tel = hw.get_hardware_telemetry()
+                    if st.get("state") != last_state_val:
+                        last_state_val = st.get("state")
+                        mqtt_client.publish_fsm_state(st, event="STATE_CHANGE")
+                    else:
+                        mqtt_client.publish_fsm_state(st)
+                    mqtt_client.publish_hardware_telemetry(tel)
+                except Exception:
+                    pass
+                await asyncio.sleep(1.0)
+
+        asyncio.create_task(mqtt_telemetry_loop())
 
         # Conectar suscriptor de Redis Pub/Sub para que mensajes de otras réplicas
         # se difundan a los WebSockets conectados a esta instancia
@@ -174,6 +212,21 @@ if FASTAPI_AVAILABLE:
         data["events"] = fsm.get_recent_events()
         data["local_telemetry"] = get_live_telemetry()
         return data
+
+    @app.get("/api/mqtt/status")
+    def get_mqtt_status() -> Dict[str, Any]:
+        """Devuelve el estado de conexión con el broker Eclipse Mosquitto."""
+        return {
+            "broker": f"{mqtt_client.broker_host}:{mqtt_client.broker_port}",
+            "connected": mqtt_client.connected,
+            "topics": {
+                "publish": [
+                    mqtt_client.TOPIC_FSM_STATE,
+                    mqtt_client.TOPIC_HARDWARE_TELEMETRY,
+                ],
+                "subscribe": [mqtt_client.TOPIC_COMMANDS],
+            },
+        }
 
     @app.get("/dashboard")
     def get_dashboard() -> Any:
@@ -469,7 +522,8 @@ if __name__ == "__main__":
         print("  🚀 FOCUSLOCK SERVER INICIADO (Cloud & Edge Ready)")
         print(f"  • Escuchando en: http://{args.host}:{args.port}")
         print("  • WebSockets en: /ws/telemetry (Módulo Local) y /ws/live (Web)")
+        print("  • MQTT Mosquitto: focuslock/fsm/state | focuslock/hardware/telemetry")
         print("  • Persistencia: PostgreSQL (Relacional) y Redis (NoSQL / PubSub)")
-        print("  • Servos: Tapa en GPIO 18 | Bloqueo en GPIO 13 (Pin 33)")
+        print("  • Servos: Tapa en GPIO 13 (Pin 33) | Bloqueo en GPIO 18 (Pin 12)")
         print("=" * 70 + "\n")
         uvicorn.run(app, host=args.host, port=args.port, reload=False, workers=1)

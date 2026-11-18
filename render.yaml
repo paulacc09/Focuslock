@@ -21,7 +21,7 @@ services:
           name: focuslock-postgres
           property: connectionString
       - key: REDIS_URL
-        value: redis://localhost:6379/0
+        sync: false
 
 databases:
   # ==============================================================================

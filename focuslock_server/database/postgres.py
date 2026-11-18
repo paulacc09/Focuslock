@@ -21,7 +21,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 # Flags y conexiones
 _using_postgres = False
 _sqlite_conn: Optional[sqlite3.Connection] = None
-_sqlite_lock = threading.Lock()
+_sqlite_lock = threading.RLock()
 
 
 def get_connection():

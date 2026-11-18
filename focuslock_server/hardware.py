@@ -85,8 +85,8 @@ class HardwareController:
 
     def __init__(
         self,
-        lid_servo_pin: int = 18,   # Pin 12 (GPIO 18) — Mueve la Tapa
-        lock_servo_pin: int = 13,  # Pin 33 (GPIO 13) — Bloquea la Caja
+        lid_servo_pin: int = 13,   # Pin 33 (GPIO 13) — Mueve la Tapa
+        lock_servo_pin: int = 18,  # Pin 12 (GPIO 18) — Bloquea la Caja
         sensor_pin: int = 17,      # Pin 11 (GPIO 17) — Sensor TCRT5000
         buzzer_pin: int = 27,      # Pin 13 (GPIO 27) — Buzzer activo
         led_red: int = 22,         # Pin 15 (GPIO 22) — LED Rojo
@@ -149,7 +149,7 @@ class HardwareController:
             GPIO.setup(self.led_red, GPIO.OUT, initial=GPIO.LOW)
             GPIO.setup(self.led_green, GPIO.OUT, initial=GPIO.HIGH)
             logger.info(
-                "GPIO inicializado en Raspberry Pi (Dual Servo: Tapa=GPIO %d [Pin 12], Bloqueo=GPIO %d [Pin 33]).",
+                "GPIO inicializado en Raspberry Pi (Dual Servo: Tapa=GPIO %d [Pin 33], Bloqueo=GPIO %d [Pin 12]).",
                 self.lid_servo_pin,
                 self.lock_servo_pin,
             )
@@ -171,38 +171,38 @@ class HardwareController:
             pwm_inst.ChangeDutyCycle(0.0)
 
     def close_lid(self) -> None:
-        """Cierra la compuerta / tapa de la caja (Servo GPIO 18 a 90°)."""
+        """Cierra la compuerta / tapa de la caja (Servo GPIO 13 a 90°)."""
         with self._hw_lock:
             self.is_lid_closed = True
             self.lid_angle_deg = 90
         self._drive_servo(self.pwm_lid, 90, self.DUTY_LOCKED_PERCENT)
-        logger.info("Tapa (GPIO %d / Pin 12): 90° CERRADA", self.lid_servo_pin)
+        logger.info("Tapa (GPIO %d / Pin 33): 90° CERRADA", self.lid_servo_pin)
 
     def open_lid(self) -> None:
-        """Abre la compuerta / tapa de la caja (Servo GPIO 18 a 0°)."""
+        """Abre la compuerta / tapa de la caja (Servo GPIO 13 a 0°)."""
         with self._hw_lock:
             self.is_lid_closed = False
             self.lid_angle_deg = 0
         self._drive_servo(self.pwm_lid, 0, self.DUTY_UNLOCKED_PERCENT)
-        logger.info("Tapa (GPIO %d / Pin 12): 0° ABIERTA", self.lid_servo_pin)
+        logger.info("Tapa (GPIO %d / Pin 33): 0° ABIERTA", self.lid_servo_pin)
 
     def lock_box(self) -> None:
-        """Enclava el cerrojo de bloqueo de la caja (Servo GPIO 13 / Pin 33 a 90°)."""
+        """Enclava el cerrojo de bloqueo de la caja (Servo GPIO 18 / Pin 12 a 90°)."""
         with self._hw_lock:
             self.is_box_locked = True
             self.lock_angle_deg = 90
             self.set_leds(locked=True)
         self._drive_servo(self.pwm_lock, 90, self.DUTY_LOCKED_PERCENT)
-        logger.info("Cerrojo (GPIO %d / Pin 33): 90° BLOQUEADO", self.lock_servo_pin)
+        logger.info("Cerrojo (GPIO %d / Pin 12): 90° BLOQUEADO", self.lock_servo_pin)
 
     def unlock_box(self) -> None:
-        """Retrae el cerrojo de bloqueo de la caja (Servo GPIO 13 / Pin 33 a 0°)."""
+        """Retrae el cerrojo de bloqueo de la caja (Servo GPIO 18 / Pin 12 a 0°)."""
         with self._hw_lock:
             self.is_box_locked = False
             self.lock_angle_deg = 0
             self.set_leds(locked=False)
         self._drive_servo(self.pwm_lock, 0, self.DUTY_UNLOCKED_PERCENT)
-        logger.info("Cerrojo (GPIO %d / Pin 33): 0° DESBLOQUEADO", self.lock_servo_pin)
+        logger.info("Cerrojo (GPIO %d / Pin 12): 0° DESBLOQUEADO", self.lock_servo_pin)
 
     def close_and_lock(self) -> None:
         """
