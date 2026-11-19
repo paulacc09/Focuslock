@@ -75,10 +75,13 @@
     📷 Activar Cámara y Micrófono del Navegador
   </button>
 
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
   <script>
     const params = new URLSearchParams(window.location.search);
     let apiBase = (params.get('api') || 'https://focuslock-server-q3bw.onrender.com').replace(/\/+$/, '');
     let browserActive = false;
+    let faceModel = null;
 
     function updateTelemetry(tel) {
       if (!tel) return;
@@ -130,14 +133,74 @@
         src.connect(analyser);
         const dataArr = new Uint8Array(analyser.frequencyBinCount);
 
+        // Cargar modelo BlazeFace (TensorFlow.js) para detectar rostro y orientación real
+        if (window.blazeface && !faceModel) {
+          document.getElementById('camBadge').textContent = 'CARGANDO IA...';
+          try { faceModel = await blazeface.load(); } catch (e) { faceModel = null; }
+        }
+
+        // Canvas oculto para analizar presencia si el modelo aún carga o falla
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = 160; offCanvas.height = 120;
+        const offCtx = offCanvas.getContext('2d');
+
         setInterval(async () => {
           analyser.getByteFrequencyData(dataArr);
           const avg = dataArr.reduce((a, b) => a + b, 0) / dataArr.length;
           const db = Math.round(32 + (avg / 255) * 58);
+
+          let attention = 0.25;
+          let faceDetected = false;
+
+          if (faceModel && video.readyState >= 2) {
+            try {
+              const preds = await faceModel.estimateFaces(video, false);
+              if (preds && preds.length > 0) {
+                faceDetected = true;
+                const p = preds[0];
+                const [x1, y1] = p.topLeft;
+                const [x2, y2] = p.bottomRight;
+                const cx = (x1 + x2) / 2;
+                const vw = video.videoWidth || 640;
+                const centerOffset = Math.abs(cx - vw / 2) / (vw / 2); // 0 = centrado, 1 = borde
+
+                // Verificar simetría de ojos/nariz para detectar si miró hacia un lado
+                let headTurnPenalty = 0;
+                if (p.landmarks && p.landmarks.length >= 3) {
+                  const rightEyeX = p.landmarks[0][0];
+                  const leftEyeX = p.landmarks[1][0];
+                  const noseX = p.landmarks[2][0];
+                  const eyeMid = (rightEyeX + leftEyeX) / 2;
+                  const eyeDist = Math.max(10, Math.abs(leftEyeX - rightEyeX));
+                  const yawRatio = Math.abs(noseX - eyeMid) / eyeDist;
+                  if (yawRatio > 0.35) headTurnPenalty = Math.min(0.45, (yawRatio - 0.35) * 0.9);
+                }
+
+                attention = Math.max(0.35, Math.min(0.98, 0.96 - centerOffset * 0.35 - headTurnPenalty));
+              } else {
+                faceDetected = false;
+                attention = 0.18; // No aparece nadie frente a la cámara
+              }
+            } catch (e) {}
+          } else if (video.readyState >= 2) {
+            // Fallback por si no carga TFJS: detectar cambios en el centro del cuadro
+            offCtx.drawImage(video, 0, 0, 160, 120);
+            const imgData = offCtx.getImageData(40, 20, 80, 80).data;
+            let skinPixels = 0;
+            for (let i = 0; i < imgData.length; i += 4) {
+              const r = imgData[i], g = imgData[i+1], b = imgData[i+2];
+              if (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 15) skinPixels++;
+            }
+            const ratio = skinPixels / (80 * 80);
+            faceDetected = ratio > 0.06;
+            attention = faceDetected ? Math.min(0.95, 0.65 + ratio * 1.2) : 0.20;
+          }
+
+          const distracted = !faceDetected || attention < 0.62;
           const payload = {
-            attention_score: 0.94,
-            face_detected: true,
-            distraction_detected: false,
+            attention_score: Number(attention.toFixed(2)),
+            face_detected: faceDetected,
+            distraction_detected: distracted,
             decibels: db,
             noise_violation: db > 65
           };
@@ -149,7 +212,7 @@
               body: JSON.stringify(payload)
             });
           } catch (e) {}
-        }, 1200);
+        }, 900);
       } catch (err) {
         alert('Permiso de cámara/micrófono requerido (funciona en HTTPS o localhost): ' + err.message);
       }
@@ -163,3 +226,4 @@
   </script>
 </body>
 </html>
+
