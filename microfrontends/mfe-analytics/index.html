@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MFE 3 — Analíticas Multi-BD & Arquitectura</title>
+  <style>
+    :root {
+      --bg: #F5F9F8; --card: #FFFFFF; --border: #E2EAE7;
+      --sage: #7EAE9B; --sage-dark: #659683; --text: #192A24; --text-sec: #526B61;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: transparent; color: var(--text); padding: 4px; }
+    .mfe-badge {
+      display: inline-block; font-size: 11px; font-weight: 800; padding: 3px 10px;
+      border-radius: 99px; background: #EAF1EF; color: var(--sage-dark); margin-bottom: 10px;
+    }
+    .db-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .db-pill {
+      background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px;
+      padding: 9px 10px; font-size: 12px; font-weight: 800;
+    }
+    .db-ok { color: #16A34A; font-size: 11px; margin-top: 2px; }
+    .section-title { font-size: 12.5px; font-weight: 800; color: var(--text-sec); margin: 8px 0 6px; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--bg); border-radius: 10px; overflow: hidden; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: #EAF1EF; color: var(--sage-dark); font-weight: 800; }
+    .log-box {
+      background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px;
+      padding: 9px; font-family: Consolas, monospace; font-size: 11.5px;
+      color: var(--text-sec); max-height: 120px; overflow-y: auto; margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <span class="mfe-badge">MFE-3 • Bases de Datos & Bitácora</span>
+
+  <div class="db-pills">
+    <div class="db-pill">
+      🐘 PostgreSQL (Cloud)
+      <div id="pgStatus" class="db-ok">● Verificando...</div>
+    </div>
+    <div class="db-pill">
+      🍃 MongoDB Atlas (NoSQL)
+      <div id="mongoStatus" class="db-ok">● Verificando...</div>
+    </div>
+  </div>
+
+  <div class="section-title">Historial de Sesiones (PostgreSQL)</div>
+  <table>
+    <thead>
+      <tr><th>Sesión</th><th>Modo</th><th>Estado</th></tr>
+    </thead>
+    <tbody id="sessionsBody">
+      <tr><td colspan="3">Cargando sesiones...</td></tr>
+    </tbody>
+  </table>
+
+  <div class="section-title">Eventos en Vivo (WebSocket)</div>
+  <div id="eventLog" class="log-box">• Esperando eventos del Shell...</div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    let apiBase = (params.get('api') || 'https://focuslock-server-q3bw.onrender.com').replace(/\/+$/, '');
+    const logs = [];
+
+    function pushLog(txt) {
+      const t = new Date().toLocaleTimeString();
+      logs.unshift(`[${t}] ${txt}`);
+      if (logs.length > 8) logs.pop();
+      document.getElementById('eventLog').innerHTML = logs.map(l => `<div>${l}</div>`).join('');
+    }
+
+    async function refreshData() {
+      try {
+        const [resRoot, resSess] = await Promise.all([
+          fetch(apiBase + '/'),
+          fetch(apiBase + '/api/db/sessions?limit=5')
+        ]);
+        if (resRoot.ok) {
+          const info = await resRoot.json();
+          const dbs = info.databases || {};
+          document.getElementById('pgStatus').textContent = dbs.postgres ? '● Activa' : '● Inactiva';
+          document.getElementById('mongoStatus').textContent = dbs.mongodb ? '● Activa' : '● En espera';
+        }
+        if (resSess.ok) {
+          const data = await resSess.json();
+          const rows = data.sessions || [];
+          const tbody = document.getElementById('sessionsBody');
+          if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3">Sin sesiones registradas</td></tr>';
+          } else {
+            tbody.innerHTML = rows.map(s => `
+              <tr>
+                <td><b>${s.session_name || s.id}</b></td>
+                <td>${s.mode}</td>
+                <td style="font-weight:800; color:${s.status==='COMPLETED'?'#16A34A':'#D96B4F'}">${s.status}</td>
+              </tr>
+            `).join('');
+          }
+        }
+      } catch (e) {
+        pushLog('Error consultando BD en la nube.');
+      }
+    }
+
+    window.addEventListener('message', (ev) => {
+      const msg = ev.data || {};
+      if (msg.type === 'set_api' && msg.apiBase) {
+        apiBase = msg.apiBase;
+        refreshData();
+      }
+      if (msg.type === 'log_event' && msg.text) {
+        pushLog(msg.text);
+        refreshData();
+      }
+    });
+
+    refreshData();
+    setInterval(refreshData, 6000);
+  </script>
+</body>
+</html>

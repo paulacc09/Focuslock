@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MFE 1 — Estación Física & Pomodoro</title>
+  <style>
+    :root {
+      --bg: #F5F9F8; --card: #FFFFFF; --border: #E2EAE7;
+      --sage: #7EAE9B; --sage-dark: #659683; --text: #192A24; --text-sec: #526B61;
+      --focus: #D96B4F; --focus-bg: #FCEAE4;
+      --break: #489468; --break-bg: #E2F1E8;
+      --grace: #E08A26; --grace-bg: #FFF0D9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: transparent; color: var(--text); padding: 4px; }
+    .mfe-badge {
+      display: inline-block; font-size: 11px; font-weight: 800; padding: 3px 10px;
+      border-radius: 99px; background: #EAF1EF; color: var(--sage-dark); margin-bottom: 10px;
+    }
+    .fsm-banner {
+      padding: 12px; border-radius: 14px; text-align: center; font-weight: 900;
+      font-size: 15px; background: var(--break-bg); color: var(--break); margin-bottom: 14px;
+    }
+    .timer-ring {
+      width: 190px; height: 190px; border-radius: 50%; margin: 10px auto 16px;
+      border: 11px solid var(--sage); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: #FFF;
+      box-shadow: 0 8px 20px rgba(126, 174, 155, 0.18);
+    }
+    .digits { font-size: 46px; font-weight: 900; color: var(--text); line-height: 1; }
+    .sub { font-size: 12px; font-weight: 700; color: var(--text-sec); margin-top: 6px; }
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    button {
+      border: none; border-radius: 12px; padding: 11px 10px; font-weight: 800;
+      font-size: 13px; cursor: pointer; transition: transform 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    .btn-demo { grid-column: span 2; background: var(--sage); color: #FFF; }
+    .btn-start { background: var(--break-bg); color: var(--break); }
+    .btn-cancel { background: #EAF1EF; color: var(--text-sec); }
+    .btn-emerg { grid-column: span 2; background: #FEE2E2; color: #B91C1C; border: 1.5px solid #FCA5A5; }
+    .hw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .hw-box {
+      background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px; padding: 10px;
+    }
+    .hw-lbl { font-size: 11.5px; color: var(--text-sec); font-weight: 700; }
+    .hw-val { font-size: 14px; font-weight: 900; margin-top: 3px; }
+  </style>
+</head>
+<body>
+  <span class="mfe-badge">MFE-1 • Estación Física & FSM</span>
+  <div id="fsmBanner" class="fsm-banner">IDLE — SISTEMA LISTO</div>
+
+  <div id="timerRing" class="timer-ring">
+    <div id="timerDigits" class="digits">00:00</div>
+    <div id="timerSub" class="sub">🦫 Locky Listo</div>
+  </div>
+
+  <div class="btn-grid">
+    <button class="btn-demo" onclick="sendAction('/api/session/start', { focus_seconds: 30, break_seconds: 10, session_name: 'Demo 30s (MFE)' })">
+      ⚡ Iniciar Demo (30s Enfoque / 10s Descanso)
+    </button>
+    <button class="btn-start" onclick="sendAction('/api/session/start', { focus_minutes: 25, break_minutes: 5, session_name: 'Pomodoro 25m (MFE)' })">
+      ▶ Pomodoro 25m
+    </button>
+    <button class="btn-cancel" onclick="sendAction('/api/session/cancel')">
+      ↺ Cancelar
+    </button>
+    <button class="btn-emerg" onclick="sendAction('/api/hardware/unlock')">
+      🚨 Apertura de Emergencia (Auto-Reset 3s)
+    </button>
+  </div>
+
+  <div class="hw-grid">
+    <div class="hw-box">
+      <div class="hw-lbl">📱 Sensor IR (GPIO 17)</div>
+      <div id="sensorVal" class="hw-val">COMPARTIMENTO VACÍO</div>
+    </div>
+    <div class="hw-box">
+      <div class="hw-lbl">⚙️ Servos (74LS244)</div>
+      <div id="servosVal" class="hw-val">Tapa 0° | Cerrojo 0°</div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    let apiBase = (params.get('api') || 'https://focuslock-server-q3bw.onrender.com').replace(/\/+$/, '');
+
+    function fmt(sec) {
+      const s = Math.max(0, parseInt(sec || 0, 10));
+      return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    }
+
+    function applyFsm(st) {
+      const state = st.state || st.fsm_state || 'IDLE';
+      const rem = st.remaining_seconds || 0;
+      document.getElementById('timerDigits').textContent = fmt(rem);
+
+      const banner = document.getElementById('fsmBanner');
+      const ring = document.getElementById('timerRing');
+      const sub = document.getElementById('timerSub');
+
+      if (state === 'FOCUSING' || state === 'LOCKED_FOCUS') {
+        banner.style.background = 'var(--focus-bg)'; banner.style.color = 'var(--focus)';
+        banner.textContent = '🔒 ENFOQUE BLOQUEADO';
+        ring.style.borderColor = 'var(--focus)';
+        sub.textContent = '🦫 ¡Concentración Total!';
+      } else if (state === 'GRACE_PERIOD' || state === 'WAITING_PHONE') {
+        banner.style.background = 'var(--grace-bg)'; banner.style.color = 'var(--grace)';
+        banner.textContent = state === 'GRACE_PERIOD' ? '⏳ VENTANA DE GRACIA' : '📱 ESPERANDO CELULAR';
+        ring.style.borderColor = 'var(--grace)';
+        sub.textContent = '🦫 Deposita tu celular';
+      } else if (state === 'EMERGENCY_UNLOCKED') {
+        banner.style.background = '#FEE2E2'; banner.style.color = '#B91C1C';
+        banner.textContent = '🚨 EMERGENCIA (REINICIANDO)';
+        ring.style.borderColor = '#DC2626';
+      } else {
+        banner.style.background = 'var(--break-bg)'; banner.style.color = 'var(--break)';
+        banner.textContent = state === 'BREAK_OPEN' ? '☕ DESCANSO ACTIVO' : '✅ SISTEMA LISTO (IDLE)';
+        ring.style.borderColor = 'var(--sage)';
+        sub.textContent = '🦫 Locky Listo';
+      }
+    }
+
+    function applyTelemetry(t) {
+      if (!t) return;
+      if (t.stable_sensor !== undefined) {
+        const sEl = document.getElementById('sensorVal');
+        sEl.textContent = t.stable_sensor ? '📱 CELULAR PRESENTE' : 'COMPARTIMENTO VACÍO';
+        sEl.style.color = t.stable_sensor ? 'var(--break)' : 'var(--grace)';
+      }
+      if (t.lid_angle_deg !== undefined || t.lock_angle_deg !== undefined) {
+        const lid = t.lid_angle_deg ?? t.lid_angle ?? 0;
+        const lock = t.lock_angle_deg ?? t.lock_angle ?? 0;
+        document.getElementById('servosVal').textContent = `Tapa ${lid}° | Cerrojo ${lock}°`;
+      }
+    }
+
+    async function sendAction(path, body) {
+      try {
+        await fetch(apiBase + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body ? JSON.stringify(body) : undefined
+        });
+        window.parent.postMessage({ source: 'mfe-station', type: 'refresh' }, '*');
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    window.addEventListener('message', (ev) => {
+      const msg = ev.data || {};
+      if (msg.type === 'set_api' && msg.apiBase) apiBase = msg.apiBase;
+      if (msg.type === 'fsm_update' && msg.data) applyFsm(msg.data);
+      if (msg.type === 'hw_update' && msg.data) applyTelemetry(msg.data);
+    });
+  </script>
+</body>
+</html>

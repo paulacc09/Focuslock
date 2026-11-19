@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FocusLock — Plataforma Microfrontends (Cloud & Edge)</title>
+  <style>
+    :root {
+      --bg: #F5F9F8; --card: #FFFFFF; --border: #E2EAE7;
+      --sage: #7EAE9B; --sage-dark: #659683; --text: #192A24; --text-sec: #526B61;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 18px 24px; min-height: 100vh; }
+
+    header {
+      background: var(--card); border: 2px solid var(--border); border-radius: 20px;
+      padding: 16px 24px; display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 14px; margin-bottom: 18px;
+      box-shadow: 0 8px 24px rgba(25, 42, 36, 0.05);
+    }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .avatar {
+      width: 52px; height: 52px; border-radius: 16px; background: #A67358;
+      display: flex; align-items: center; justify-content: center; font-size: 28px;
+    }
+    h1 { font-size: 21px; font-weight: 900; color: var(--text); }
+    .subtitle { font-size: 12.5px; color: var(--text-sec); font-weight: 600; margin-top: 2px; }
+
+    .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    select, input {
+      background: var(--bg); border: 2px solid var(--border); color: var(--text);
+      padding: 8px 12px; border-radius: 12px; font-size: 13px; font-weight: 700; outline: none;
+    }
+    .pill {
+      padding: 8px 14px; border-radius: 99px; font-size: 12.5px; font-weight: 800;
+      border: 2px solid var(--border); background: #EAF1EF; color: var(--sage-dark);
+    }
+    .pill-ok { background: #E2F1E8; color: #16A34A; border-color: #86EFAC; }
+    .pill-warn { background: #FFF0D9; color: #D97706; border-color: #FCD34D; }
+
+    .mfe-grid {
+      display: grid; grid-template-columns: repeat(3, minmax(310px, 1fr)); gap: 18px;
+    }
+    @media (max-width: 1120px) { .mfe-grid { grid-template-columns: 1fr; } }
+
+    .mfe-card {
+      background: var(--card); border: 2px solid var(--border); border-radius: 22px;
+      padding: 14px; box-shadow: 0 10px 26px rgba(25, 42, 36, 0.05);
+      display: flex; flex-direction: column;
+    }
+    iframe {
+      width: 100%; height: 470px; border: none; background: transparent;
+    }
+    footer {
+      text-align: center; margin-top: 16px; font-size: 12px; color: var(--text-sec); font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="avatar">🦫</div>
+      <div>
+        <h1>FocusLock — Arquitectura de Microfrontends</h1>
+        <div class="subtitle">Shell Host Orquestador • Render Cloud + PostgreSQL + MongoDB Atlas + Raspberry Pi 5 (Mosquitto)</div>
+      </div>
+    </div>
+    <div class="controls">
+      <select id="presetSelect" onchange="applyPreset()">
+        <option value="https://focuslock-server-q3bw.onrender.com">☁️ Nube (Render)</option>
+        <option value="http://192.168.43.157:8000">🍓 Raspberry Pi (Local)</option>
+        <option value="http://localhost:8000">💻 Localhost (:8000)</option>
+      </select>
+      <input type="text" id="apiHost" value="https://focuslock-server-q3bw.onrender.com" style="width: 260px;" onchange="changeHost()" />
+      <span id="wsBadge" class="pill pill-warn">WS: Conectando...</span>
+    </div>
+  </header>
+
+  <main class="mfe-grid">
+    <section class="mfe-card">
+      <iframe id="mfeStation" src="/mfe-station/index.html?api=https://focuslock-server-q3bw.onrender.com" title="Microfrontend Estación Física"></iframe>
+    </section>
+    <section class="mfe-card">
+      <iframe id="mfeSensors" src="/mfe-sensors/index.html?api=https://focuslock-server-q3bw.onrender.com" title="Microfrontend Cámara y Micrófono"></iframe>
+    </section>
+    <section class="mfe-card">
+      <iframe id="mfeAnalytics" src="/mfe-analytics/index.html?api=https://focuslock-server-q3bw.onrender.com" title="Microfrontend Bases de Datos"></iframe>
+    </section>
+  </main>
+
+  <footer>
+    FocusLock Shell Host • Microfrontends desacoplados comunicados por <code>window.postMessage</code> &amp; WebSockets (<code>/ws/live</code>)
+  </footer>
+
+  <script>
+    const frames = ['mfeStation', 'mfeSensors', 'mfeAnalytics'];
+    let ws = null;
+    let lastState = '';
+
+    function getApiBase() {
+      return document.getElementById('apiHost').value.trim().replace(/\/+$/, '');
+    }
+
+    function broadcastToMicrofrontends(message) {
+      frames.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.contentWindow) {
+          el.contentWindow.postMessage(message, '*');
+        }
+      });
+    }
+
+    function applyPreset() {
+      document.getElementById('apiHost').value = document.getElementById('presetSelect').value;
+      changeHost();
+    }
+
+    function changeHost() {
+      const api = getApiBase();
+      broadcastToMicrofrontends({ type: 'set_api', apiBase: api });
+      if (ws) { try { ws.close(); } catch(e) {} }
+      connectWS();
+      pollOnce();
+    }
+
+    function connectWS() {
+      const base = getApiBase();
+      const wsUrl = base.startsWith('https://')
+        ? base.replace('https://', 'wss://') + '/ws/live'
+        : base.replace('http://', 'ws://') + '/ws/live';
+
+      const badge = document.getElementById('wsBadge');
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          badge.className = 'pill pill-ok';
+          badge.textContent = '● WS En Vivo';
+          broadcastToMicrofrontends({ type: 'log_event', text: 'WebSocket /ws/live conectado.' });
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg.telemetry) {
+              broadcastToMicrofrontends({ type: 'local_telemetry', data: msg.telemetry });
+            }
+            if (msg.fsm || msg.fsm_state) {
+              const fsmData = msg.fsm || { state: msg.fsm_state, remaining_seconds: msg.remaining_seconds };
+              broadcastToMicrofrontends({ type: 'fsm_update', data: fsmData });
+            }
+          } catch (e) {}
+        };
+        ws.onclose = () => {
+          badge.className = 'pill pill-warn';
+          badge.textContent = '● Reconectando WS...';
+          setTimeout(connectWS, 3500);
+        };
+      } catch (e) {
+        setTimeout(connectWS, 4000);
+      }
+    }
+
+    async function pollOnce() {
+      const api = getApiBase();
+      try {
+        const [rSt, rTel] = await Promise.all([
+          fetch(api + '/api/status', { cache: 'no-store' }),
+          fetch(api + '/api/telemetry', { cache: 'no-store' })
+        ]);
+        if (rSt.ok) {
+          const st = await rSt.json();
+          broadcastToMicrofrontends({ type: 'fsm_update', data: st });
+          if (st.local_module) {
+            broadcastToMicrofrontends({ type: 'local_telemetry', data: st.local_module });
+          }
+          if (st.state && st.state !== lastState) {
+            lastState = st.state;
+            broadcastToMicrofrontends({ type: 'log_event', text: `Estado FSM -> ${st.state}` });
+          }
+        }
+        if (rTel.ok) {
+          const tel = await rTel.json();
+          broadcastToMicrofrontends({ type: 'hw_update', data: tel });
+        }
+      } catch (e) {}
+    }
+
+    window.addEventListener('message', (ev) => {
+      if (ev.data && ev.data.type === 'refresh') {
+        pollOnce();
+      }
+    });
+
+    connectWS();
+    pollOnce();
+    setInterval(pollOnce, 1200);
+  </script>
+</body>
+</html>
