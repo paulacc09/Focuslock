@@ -70,6 +70,9 @@
     <button class="btn-emerg" onclick="sendAction('/api/hardware/unlock')">
       🚨 Apertura de Emergencia (Auto-Reset 3s)
     </button>
+    <button id="btnMockPhone" style="grid-column: span 2; background: #FFF0D9; color: #D97706; border: 1.5px solid #FCD34D;" onclick="toggleMockPhone()">
+      📱 Simular Celular en Caja (Modo Nube sin Pi)
+    </button>
   </div>
 
   <div class="hw-grid">
@@ -135,6 +138,17 @@
         const lock = t.lock_angle_deg ?? t.lock_angle ?? 0;
         document.getElementById('servosVal').textContent = `Tapa ${lid}° | Cerrojo ${lock}°`;
       }
+    }
+
+    let phoneSimulated = false;
+
+    async function toggleMockPhone() {
+      phoneSimulated = !phoneSimulated;
+      await sendAction('/api/hardware/mock_phone', { detected: phoneSimulated });
+      const btn = document.getElementById('btnMockPhone');
+      btn.textContent = phoneSimulated
+        ? '📤 Sacar Celular Simulado de la Caja'
+        : '📱 Simular Celular en Caja (Modo Nube sin Pi)';
     }
 
     async function sendAction(path, body) {

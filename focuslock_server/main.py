@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List, Optional, Set
 
 try:
@@ -240,7 +241,7 @@ if FASTAPI_AVAILABLE:
     @app.post("/api/session/start")
     def start_session(req: StartSessionRequest) -> Dict[str, Any]:
         """Inicia una sesión de estudio o demostración acelerada y la persiste en PostgreSQL."""
-        s_id = req.session_id or f"sess_{int(asyncio.get_event_loop().time() * 1000)}"
+        s_id = req.session_id or f"sess_{int(time.time() * 1000)}"
         fsm.start_session(
             focus_minutes=req.focus_minutes or 25,
             break_minutes=req.break_minutes or 5,
