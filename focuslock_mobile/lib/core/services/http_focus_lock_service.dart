@@ -14,13 +14,23 @@ class HttpFocusLockService implements FocusLockService {
       ValueNotifier<FocusLockStatus>(FocusLockStatus.disconnected());
 
   FocusLockStatus _current = FocusLockStatus.disconnected();
-  String _host = '192.168.43.59';
-  int _port = 8000;
-  String _baseUrl = 'http://192.168.43.59:8000';
+  String _host = 'https://focuslock-server-q3bw.onrender.com';
+  int _port = 443;
+  String _baseUrl = 'https://focuslock-server-q3bw.onrender.com';
+  String? authToken;
   Timer? _pollingTimer;
   final http.Client _client;
 
-  HttpFocusLockService({http.Client? client}) : _client = client ?? http.Client();
+  HttpFocusLockService({http.Client? client, this.authToken}) : _client = client ?? http.Client();
+
+  static String buildBaseUrl(String host, int port) {
+    final trimmed = host.trim().replaceAll(RegExp(r'/+$'), '');
+    if (trimmed.isEmpty) return 'https://focuslock-server-q3bw.onrender.com';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    return 'http://$trimmed:$port';
+  }
 
   String get host => _host;
   int get port => _port;
@@ -44,10 +54,10 @@ class HttpFocusLockService implements FocusLockService {
   }
 
   @override
-  Future<void> connect({String host = 'focuslock.local', int port = 8000}) async {
-    _host = host.trim().isEmpty ? 'focuslock.local' : host.trim();
+  Future<void> connect({String host = 'https://focuslock-server-q3bw.onrender.com', int port = 8000}) async {
+    _host = host.trim().isEmpty ? 'https://focuslock-server-q3bw.onrender.com' : host.trim();
     _port = port;
-    _baseUrl = 'http://$_host:$_port';
+    _baseUrl = buildBaseUrl(_host, _port);
     _pollingTimer?.cancel();
 
     await _fetchStatus();
@@ -59,7 +69,7 @@ class HttpFocusLockService implements FocusLockService {
   Future<bool> testConnection({String? host, int? port}) async {
     final targetHost = host ?? _host;
     final targetPort = port ?? _port;
-    final url = 'http://$targetHost:$targetPort/api/status';
+    final url = '${buildBaseUrl(targetHost, targetPort)}/api/status';
 
     try {
       final response = await _client
@@ -119,9 +129,13 @@ class HttpFocusLockService implements FocusLockService {
   @override
   Future<void> startSession(PomodoroSessionConfig config) async {
     try {
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (authToken != null && authToken!.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $authToken';
+      }
       final response = await _client.post(
         Uri.parse('$_baseUrl/api/session/start'),
-        headers: {'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode(config.toJson()),
       );
       if (response.statusCode == 200) {

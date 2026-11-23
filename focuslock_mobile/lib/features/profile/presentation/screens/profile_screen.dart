@@ -2,16 +2,190 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/providers/focus_lock_provider.dart';
 import '../../../connection/presentation/screens/connection_screen.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final baseUrl = context.read<FocusLockProvider>().baseUrl;
+      final auth = context.read<AuthProvider>();
+      auth.refreshProfile(baseUrl);
+      auth.fetchLeaderboard(baseUrl);
+    });
+  }
+
+  void _showAuthDialog(BuildContext context) {
+    final focusProvider = context.read<FocusLockProvider>();
+    final authProvider = context.read<AuthProvider>();
+    final usernameCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    bool isRegister = false;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final authWatch = ctx.watch<AuthProvider>();
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '🦫 Cuenta FocusLock',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.pop(sheetCtx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Iniciar Sesión'),
+                          selected: !isRegister,
+                          onSelected: (_) => setSheetState(() => isRegister = false),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Crear Cuenta'),
+                          selected: isRegister,
+                          onSelected: (_) => setSheetState(() => isRegister = true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (isRegister) ...[
+                    TextField(
+                      controller: usernameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre de usuario',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  TextField(
+                    controller: emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      labelText: isRegister ? 'Correo electrónico' : 'Correo o usuario',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: passCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Contraseña',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  if (authWatch.errorMessage != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      authWatch.errorMessage!,
+                      style: const TextStyle(
+                        color: AppColors.terracottaDark,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primarySage,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: authWatch.isLoading
+                        ? null
+                        : () async {
+                            bool ok;
+                            if (isRegister) {
+                              ok = await authProvider.register(
+                                baseUrl: focusProvider.baseUrl,
+                                username: usernameCtrl.text,
+                                email: emailCtrl.text,
+                                password: passCtrl.text,
+                              );
+                            } else {
+                              ok = await authProvider.login(
+                                baseUrl: focusProvider.baseUrl,
+                                identifier: emailCtrl.text,
+                                password: passCtrl.text,
+                              );
+                            }
+                            if (ok && sheetCtx.mounted) {
+                              await authProvider.fetchLeaderboard(focusProvider.baseUrl);
+                              if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                            }
+                          },
+                    child: Text(
+                      authWatch.isLoading
+                          ? 'Conectando...'
+                          : (isRegister ? 'Registrarme' : 'Entrar'),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<FocusLockProvider>();
+    final auth = context.watch<AuthProvider>();
 
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
@@ -20,18 +194,33 @@ class ProfileScreen extends StatelessWidget {
           'Perfil y Ajustes',
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar datos',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: () {
+              auth.refreshProfile(provider.baseUrl);
+              auth.fetchLeaderboard(provider.baseUrl);
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           children: [
-            // 1. Tarjeta de Identidad del Estudiante
-            _buildStudentCard(),
+            // 1. Tarjeta de Identidad del Estudiante / Usuario
+            _buildStudentCard(context, auth),
 
             const SizedBox(height: 18),
 
             // 2. Resumen Horizontal de Logros (3 micro-tarjetas)
-            _buildAchievementsRow(),
+            _buildAchievementsRow(auth),
+
+            const SizedBox(height: 18),
+
+            // 2b. Ranking en la nube
+            _buildLeaderboardCard(auth),
 
             const SizedBox(height: 24),
 
@@ -95,9 +284,15 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // 1. Tarjeta de Identidad del Estudiante
-  Widget _buildStudentCard() {
-    const double xpProgress = 1240 / 1500;
+  // 1. Tarjeta de Identidad del Usuario
+  Widget _buildStudentCard(BuildContext context, AuthProvider auth) {
+    final pts = auth.points;
+    final level = (pts ~/ 200) + 1;
+    final xpInLevel = pts % 200;
+    final double xpProgress = (xpInLevel / 200.0).clamp(0.0, 1.0);
+    final initials = auth.isLoggedIn && auth.username.isNotEmpty
+        ? auth.username.substring(0, auth.username.length >= 2 ? 2 : 1).toUpperCase()
+        : 'FL';
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -125,65 +320,68 @@ class ProfileScreen extends StatelessWidget {
                   CircleAvatar(
                     radius: 34,
                     backgroundColor: AppColors.peachCream,
-                    child: const Text(
-                      'PJ',
-                      style: TextStyle(
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         color: AppColors.terracottaDark,
                       ),
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Container(
+                  if (auth.isLoggedIn)
+                    Container(
                       padding: const EdgeInsets.all(3),
                       decoration: const BoxDecoration(
-                        color: AppColors.primarySage,
+                        color: Colors.white,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.check,
-                        size: 11,
-                        color: Colors.white,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(
+                          color: AppColors.primarySage,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check,
+                          size: 11,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(width: 16),
 
-              // Información del estudiante
-              const Expanded(
+              // Información del usuario
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Paula Jiménez',
-                      style: TextStyle(
+                      auth.username,
+                      style: const TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    SizedBox(height: 3),
+                    const SizedBox(height: 3),
                     Text(
-                      'Ingeniería de Sistemas / Electrónica • 8vo Semestre',
-                      style: TextStyle(
+                      auth.email,
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: AppColors.textSecondary,
                         height: 1.3,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
-                      '🌟 Nivel 8 — Maestra del Enfoque',
-                      style: TextStyle(
+                      auth.isLoggedIn
+                          ? '🌟 Nivel $level — $pts pts acumulados'
+                          : '🔓 Sin cuenta vinculada',
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
                         color: AppColors.focusChipText,
@@ -195,77 +393,176 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
 
-          // Barra de progreso de XP
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              Text(
-                'Progreso de Nivel',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textSecondary,
+          if (!auth.isLoggedIn)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primarySage,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-              ),
-              Text(
-                '1,240 / 1,500 XP para el Nivel 9',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primarySageDark,
+                icon: const Icon(Icons.login_rounded, size: 18),
+                label: const Text(
+                  'Iniciar Sesión o Crear Cuenta',
+                  style: TextStyle(fontWeight: FontWeight.w800),
                 ),
+                onPressed: () => _showAuthDialog(context),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: const LinearProgressIndicator(
-              value: xpProgress,
-              minHeight: 8,
-              backgroundColor: AppColors.surfaceMuted,
-              color: AppColors.primarySage,
+            )
+          else ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Progreso de Nivel',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  '$xpInLevel / 200 pts para Nivel ${level + 1}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primarySageDark,
+                  ),
+                ),
+              ],
             ),
-          ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: xpProgress,
+                minHeight: 8,
+                backgroundColor: AppColors.surfaceMuted,
+                color: AppColors.primarySage,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => auth.logout(),
+                icon: const Icon(Icons.logout_rounded, size: 16, color: AppColors.terracottaDark),
+                label: const Text(
+                  'Cerrar Sesión',
+                  style: TextStyle(
+                    color: AppColors.terracottaDark,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
   // 2. Resumen Horizontal de Logros
-  Widget _buildAchievementsRow() {
+  Widget _buildAchievementsRow(AuthProvider auth) {
     return Row(
       children: [
         Expanded(
           child: _buildAchievementTile(
             icon: Icons.timer_rounded,
-            value: '47',
-            label: 'Pomodoros',
+            value: '${auth.sessionsCompleted}',
+            label: 'Completadas',
             color: AppColors.primarySage,
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: _buildAchievementTile(
-            icon: Icons.local_fire_department_rounded,
-            value: '5 Días',
-            label: 'Racha Actual',
+            icon: Icons.schedule_rounded,
+            value: '${auth.totalFocusMinutes}m',
+            label: 'Enfoque Total',
             color: AppColors.terracottaBrown,
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: _buildAchievementTile(
-            icon: Icons.verified_rounded,
-            value: '98%',
-            label: 'Tasa Éxito',
+            icon: Icons.emoji_events_rounded,
+            value: '${auth.points}',
+            label: 'Puntos',
             color: AppColors.breakChipText,
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildLeaderboardCard(AuthProvider auth) {
+    final rows = auth.leaderboard;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderSubtle, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '🏆 Ranking de Enfoque (Cloud)',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (rows.isEmpty)
+            const Text(
+              'Aún no hay usuarios en el ranking o sin conexión.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            )
+          else
+            ...rows.asMap().entries.map((entry) {
+              final idx = entry.key + 1;
+              final u = entry.value;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Text(
+                      '#$idx',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primarySageDark,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        (u['username'] ?? 'Usuario').toString(),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Text(
+                      '${u['points'] ?? 0} pts',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.breakChipText,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
     );
   }
 

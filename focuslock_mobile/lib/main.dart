@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'core/providers/auth_provider.dart';
 import 'core/providers/focus_lock_provider.dart';
 import 'core/providers/schedule_provider.dart';
 import 'core/theme/app_theme.dart';
@@ -18,7 +19,11 @@ class FocusLockApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
+          create: (_) => AuthProvider(),
+        ),
+        ChangeNotifierProxyProvider<AuthProvider, FocusLockProvider>(
           create: (_) => FocusLockProvider(),
+          update: (_, auth, focus) => (focus ?? FocusLockProvider())..setAuthToken(auth.token),
         ),
         ChangeNotifierProvider(
           create: (_) => ScheduleProvider(),

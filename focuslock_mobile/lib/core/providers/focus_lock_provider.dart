@@ -19,11 +19,12 @@ class FocusLockProvider extends ChangeNotifier {
   bool _isMockMode = false;
   bool _buzzerEnabled = true;
   bool _lockyReactionsEnabled = true;
-  String _host = '192.168.43.59';
-  int _port = 8000;
+  String _host = 'https://focuslock-server-q3bw.onrender.com';
+  int _port = 443;
+  String? _authToken;
 
   FocusLockProvider({IFocusLockService? service})
-      : _service = service ?? (HttpFocusLockService()..connect(host: '192.168.43.59', port: 8000)) {
+      : _service = service ?? (HttpFocusLockService()..connect(host: 'https://focuslock-server-q3bw.onrender.com', port: 443)) {
     _initServiceSubscription();
   }
 
@@ -59,6 +60,14 @@ class FocusLockProvider extends ChangeNotifier {
 
   String get host => _host;
   int get port => _port;
+  String get baseUrl => HttpFocusLockService.buildBaseUrl(_host, _port);
+
+  void setAuthToken(String? token) {
+    _authToken = token;
+    if (_service is HttpFocusLockService) {
+      (_service as HttpFocusLockService).authToken = token;
+    }
+  }
 
   void setFocusMinutes(int minutes) {
     _selectedFocusSeconds = null;
@@ -88,7 +97,7 @@ class FocusLockProvider extends ChangeNotifier {
     if (_isMockMode) {
       _service = MockFocusLockService();
     } else {
-      final httpServ = HttpFocusLockService();
+      final httpServ = HttpFocusLockService(authToken: _authToken);
       httpServ.connect(host: _host, port: _port);
       _service = httpServ;
     }
@@ -97,12 +106,12 @@ class FocusLockProvider extends ChangeNotifier {
   }
 
   Future<void> updateNetworkEndpoint(String host, int port) async {
-    _host = host.trim().isEmpty ? 'focuslock.local' : host.trim();
+    _host = host.trim().isEmpty ? 'https://focuslock-server-q3bw.onrender.com' : host.trim();
     _port = port;
 
     if (!_isMockMode) {
       _service.dispose();
-      final httpServ = HttpFocusLockService();
+      final httpServ = HttpFocusLockService(authToken: _authToken);
       await httpServ.connect(host: _host, port: _port);
       _service = httpServ;
       _initServiceSubscription();
