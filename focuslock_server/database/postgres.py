@@ -6,11 +6,15 @@ métricas de concentración, auditoría de ruido y eventos de hardware.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
+import secrets
 import sqlite3
 import threading
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -101,6 +105,24 @@ def init_postgres() -> None:
                         );
                         """
                     )
+                    # 4. Tabla de usuarios (Auth propio + puntos y progreso)
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS users (
+                            id VARCHAR(64) PRIMARY KEY,
+                            username VARCHAR(64) NOT NULL,
+                            email VARCHAR(128) UNIQUE NOT NULL,
+                            password_hash VARCHAR(256) NOT NULL,
+                            points INT NOT NULL DEFAULT 0,
+                            total_focus_minutes INT NOT NULL DEFAULT 0,
+                            sessions_completed INT NOT NULL DEFAULT 0,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                        );
+                        """
+                    )
+                    # 5. Migración no destructiva en focus_sessions para vincular user_id y puntos
+                    cur.execute("ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR(64);")
+                    cur.execute("ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS points_awarded INT NOT NULL DEFAULT 0;")
                 conn.commit()
                 conn.close()
                 logger.info("Migraciones en PostgreSQL aplicadas exitosamente.")
@@ -152,6 +174,26 @@ def init_postgres() -> None:
                 );
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    points INTEGER NOT NULL DEFAULT 0,
+                    total_focus_minutes INTEGER NOT NULL DEFAULT 0,
+                    sessions_completed INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+            cur.execute("PRAGMA table_info(focus_sessions);")
+            existing_cols = {row[1] for row in cur.fetchall()}
+            if "user_id" not in existing_cols:
+                cur.execute("ALTER TABLE focus_sessions ADD COLUMN user_id TEXT;")
+            if "points_awarded" not in existing_cols:
+                cur.execute("ALTER TABLE focus_sessions ADD COLUMN points_awarded INTEGER NOT NULL DEFAULT 0;")
             conn.commit()
             logger.info("Migraciones en SQLite local aplicadas exitosamente.")
             seed_postgres()
@@ -211,6 +253,8 @@ def save_session(session_data: Dict[str, Any]) -> bool:
     status = session_data.get("status", "IDLE")
     distractions = int(session_data.get("distractions_count", 0))
     noise_viol = int(session_data.get("noise_violations_count", 0))
+    user_id = session_data.get("user_id")
+    points_awarded = int(session_data.get("points_awarded", 0))
 
     try:
         conn = get_connection()
@@ -218,15 +262,17 @@ def save_session(session_data: Dict[str, Any]) -> bool:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO focus_sessions (id, session_name, mode, target_minutes, remaining_seconds, status, distractions_count, noise_violations_count)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO focus_sessions (id, session_name, mode, target_minutes, remaining_seconds, status, distractions_count, noise_violations_count, user_id, points_awarded)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         remaining_seconds = EXCLUDED.remaining_seconds,
                         status = EXCLUDED.status,
                         distractions_count = EXCLUDED.distractions_count,
-                        noise_violations_count = EXCLUDED.noise_violations_count;
+                        noise_violations_count = EXCLUDED.noise_violations_count,
+                        user_id = COALESCE(EXCLUDED.user_id, focus_sessions.user_id),
+                        points_awarded = GREATEST(focus_sessions.points_awarded, EXCLUDED.points_awarded);
                     """,
-                    (s_id, s_name, mode, target_m, rem_s, status, distractions, noise_viol),
+                    (s_id, s_name, mode, target_m, rem_s, status, distractions, noise_viol, user_id, points_awarded),
                 )
             conn.commit()
             conn.close()
@@ -235,15 +281,17 @@ def save_session(session_data: Dict[str, Any]) -> bool:
                 cur = conn.cursor()
                 cur.execute(
                     """
-                    INSERT INTO focus_sessions (id, session_name, mode, target_minutes, remaining_seconds, status, distractions_count, noise_violations_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO focus_sessions (id, session_name, mode, target_minutes, remaining_seconds, status, distractions_count, noise_violations_count, user_id, points_awarded)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         remaining_seconds = excluded.remaining_seconds,
                         status = excluded.status,
                         distractions_count = excluded.distractions_count,
-                        noise_violations_count = excluded.noise_violations_count;
+                        noise_violations_count = excluded.noise_violations_count,
+                        user_id = COALESCE(excluded.user_id, focus_sessions.user_id),
+                        points_awarded = MAX(focus_sessions.points_awarded, excluded.points_awarded);
                     """,
-                    (s_id, s_name, mode, target_m, rem_s, status, distractions, noise_viol),
+                    (s_id, s_name, mode, target_m, rem_s, status, distractions, noise_viol, user_id, points_awarded),
                 )
                 conn.commit()
         return True
@@ -345,20 +393,32 @@ def log_noise_audit(session_id: Optional[str], decibels: float, is_violation: bo
         logger.debug("Error registrando auditoría de ruido: %s", exc)
 
 
-def get_recent_sessions(limit: int = 10) -> List[Dict[str, Any]]:
-    """Devuelve las sesiones más recientes."""
+def get_recent_sessions(limit: int = 10, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Devuelve las sesiones más recientes (filtradas por user_id si se especifica)."""
     try:
         conn = get_connection()
         if _using_postgres:
             with conn.cursor() as cur:
-                cur.execute("SELECT * FROM focus_sessions ORDER BY started_at DESC LIMIT %s", (limit,))
+                if user_id:
+                    cur.execute(
+                        "SELECT * FROM focus_sessions WHERE user_id = %s ORDER BY started_at DESC LIMIT %s",
+                        (user_id, limit),
+                    )
+                else:
+                    cur.execute("SELECT * FROM focus_sessions ORDER BY started_at DESC LIMIT %s", (limit,))
                 rows = cur.fetchall()
             conn.close()
             return [dict(r) for r in rows]
         else:
             with _sqlite_lock:
                 cur = conn.cursor()
-                cur.execute("SELECT * FROM focus_sessions ORDER BY started_at DESC LIMIT ?", (limit,))
+                if user_id:
+                    cur.execute(
+                        "SELECT * FROM focus_sessions WHERE user_id = ? ORDER BY started_at DESC LIMIT ?",
+                        (user_id, limit),
+                    )
+                else:
+                    cur.execute("SELECT * FROM focus_sessions ORDER BY started_at DESC LIMIT ?", (limit,))
                 rows = cur.fetchall()
                 return [dict(r) for r in rows]
     except Exception as exc:
@@ -385,3 +445,264 @@ def get_session_by_id(session_id: str) -> Optional[Dict[str, Any]]:
     except Exception as exc:
         logger.error("Error consultando sesión %s: %s", session_id, exc)
         return None
+
+
+# ==============================================================================
+# AUTENTICACIÓN PROPIA Y GAMIFICACIÓN (USUARIOS & PUNTOS)
+# ==============================================================================
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 120_000)
+    return f"{salt}${dk.hex()}"
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        salt, expected_hex = stored_hash.split("$", 1)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 120_000)
+        return hmac.compare_digest(dk.hex(), expected_hex)
+    except Exception:
+        return False
+
+
+def _sanitize_user(row_dict: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not row_dict:
+        return None
+    clean = dict(row_dict)
+    clean.pop("password_hash", None)
+    return clean
+
+
+def register_user(username: str, email: str, password: str) -> Dict[str, Any]:
+    """Registra un usuario nuevo con contraseña cifrada en PostgreSQL/SQLite."""
+    clean_email = email.strip().lower()
+    clean_username = username.strip()
+    if not clean_email or not clean_username or len(password) < 4:
+        return {"ok": False, "error": "Nombre, correo y contraseña (mín. 4 caracteres) son obligatorios."}
+
+    u_id = f"usr_{uuid.uuid4().hex[:12]}"
+    pw_hash = _hash_password(password)
+
+    try:
+        conn = get_connection()
+        if _using_postgres:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (clean_email,))
+                if cur.fetchone():
+                    conn.close()
+                    return {"ok": False, "error": "Ya existe una cuenta registrada con ese correo."}
+                cur.execute(
+                    """
+                    INSERT INTO users (id, username, email, password_hash, points, total_focus_minutes, sessions_completed)
+                    VALUES (%s, %s, %s, %s, 0, 0, 0)
+                    RETURNING id, username, email, points, total_focus_minutes, sessions_completed, created_at;
+                    """,
+                    (u_id, clean_username, clean_email, pw_hash),
+                )
+                user_row = dict(cur.fetchone())
+            conn.commit()
+            conn.close()
+            return {"ok": True, "user": user_row}
+        else:
+            with _sqlite_lock:
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM users WHERE LOWER(email) = ?", (clean_email,))
+                if cur.fetchone():
+                    return {"ok": False, "error": "Ya existe una cuenta registrada con ese correo."}
+                cur.execute(
+                    """
+                    INSERT INTO users (id, username, email, password_hash, points, total_focus_minutes, sessions_completed)
+                    VALUES (?, ?, ?, ?, 0, 0, 0);
+                    """,
+                    (u_id, clean_username, clean_email, pw_hash),
+                )
+                conn.commit()
+                cur.execute(
+                    "SELECT id, username, email, points, total_focus_minutes, sessions_completed, created_at FROM users WHERE id = ?",
+                    (u_id,),
+                )
+                user_row = dict(cur.fetchone())
+            return {"ok": True, "user": user_row}
+    except Exception as exc:
+        logger.error("Error registrando usuario: %s", exc)
+        return {"ok": False, "error": "Error interno al crear el usuario."}
+
+
+def authenticate_user(identifier: str, password: str) -> Dict[str, Any]:
+    """Valida credenciales por correo o nombre de usuario."""
+    ident = identifier.strip().lower()
+    if not ident or not password:
+        return {"ok": False, "error": "Ingresa tu usuario/correo y contraseña."}
+
+    try:
+        conn = get_connection()
+        row_dict: Optional[Dict[str, Any]] = None
+        if _using_postgres:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM users WHERE LOWER(email) = %s OR LOWER(username) = %s LIMIT 1",
+                    (ident, ident),
+                )
+                row = cur.fetchone()
+                row_dict = dict(row) if row else None
+            conn.close()
+        else:
+            with _sqlite_lock:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT * FROM users WHERE LOWER(email) = ? OR LOWER(username) = ? LIMIT 1",
+                    (ident, ident),
+                )
+                row = cur.fetchone()
+                row_dict = dict(row) if row else None
+
+        if not row_dict or not _verify_password(password, row_dict.get("password_hash", "")):
+            return {"ok": False, "error": "Usuario/correo o contraseña incorrectos."}
+
+        return {"ok": True, "user": _sanitize_user(row_dict)}
+    except Exception as exc:
+        logger.error("Error autenticando usuario: %s", exc)
+        return {"ok": False, "error": "Error al validar credenciales."}
+
+
+def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    """Obtiene el perfil y puntos actuales del usuario."""
+    if not user_id:
+        return None
+    try:
+        conn = get_connection()
+        if _using_postgres:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, username, email, points, total_focus_minutes, sessions_completed, created_at FROM users WHERE id = %s",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+            conn.close()
+            return dict(row) if row else None
+        else:
+            with _sqlite_lock:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id, username, email, points, total_focus_minutes, sessions_completed, created_at FROM users WHERE id = ?",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except Exception as exc:
+        logger.error("Error obteniendo usuario %s: %s", user_id, exc)
+        return None
+
+
+def award_session_points(
+    user_id: Optional[str],
+    session_id: Optional[str],
+    points: int,
+    focus_minutes: int,
+    final_status: str = "COMPLETED",
+) -> Optional[Dict[str, Any]]:
+    """Marca una sesión como completada/finalizada y suma los puntos ganados al usuario."""
+    try:
+        conn = get_connection()
+        updated_user = None
+        if _using_postgres:
+            with conn.cursor() as cur:
+                if session_id:
+                    cur.execute(
+                        """
+                        UPDATE focus_sessions
+                        SET status = %s, remaining_seconds = 0, points_awarded = %s, ended_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                        """,
+                        (final_status, points, session_id),
+                    )
+                if user_id and points > 0:
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET points = points + %s,
+                            total_focus_minutes = total_focus_minutes + %s,
+                            sessions_completed = sessions_completed + 1
+                        WHERE id = %s
+                        RETURNING id, username, email, points, total_focus_minutes, sessions_completed;
+                        """,
+                        (points, max(1, focus_minutes), user_id),
+                    )
+                    row = cur.fetchone()
+                    updated_user = dict(row) if row else None
+            conn.commit()
+            conn.close()
+            return updated_user
+        else:
+            with _sqlite_lock:
+                cur = conn.cursor()
+                if session_id:
+                    cur.execute(
+                        """
+                        UPDATE focus_sessions
+                        SET status = ?, remaining_seconds = 0, points_awarded = ?, ended_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """,
+                        (final_status, points, session_id),
+                    )
+                if user_id and points > 0:
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET points = points + ?,
+                            total_focus_minutes = total_focus_minutes + ?,
+                            sessions_completed = sessions_completed + 1
+                        WHERE id = ?
+                        """,
+                        (points, max(1, focus_minutes), user_id),
+                    )
+                conn.commit()
+                if user_id:
+                    cur.execute(
+                        "SELECT id, username, email, points, total_focus_minutes, sessions_completed FROM users WHERE id = ?",
+                        (user_id,),
+                    )
+                    row = cur.fetchone()
+                    updated_user = dict(row) if row else None
+            return updated_user
+    except Exception as exc:
+        logger.error("Error otorgando puntos de sesión: %s", exc)
+        return None
+
+
+def get_leaderboard(limit: int = 10) -> List[Dict[str, Any]]:
+    """Devuelve el ranking de usuarios ordenado por puntos acumulados."""
+    try:
+        conn = get_connection()
+        if _using_postgres:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, username, points, total_focus_minutes, sessions_completed
+                    FROM users
+                    ORDER BY points DESC, sessions_completed DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cur.fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        else:
+            with _sqlite_lock:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT id, username, points, total_focus_minutes, sessions_completed
+                    FROM users
+                    ORDER BY points DESC, sessions_completed DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                )
+                rows = cur.fetchall()
+                return [dict(r) for r in rows]
+    except Exception as exc:
+        logger.error("Error consultando leaderboard: %s", exc)
+        return []

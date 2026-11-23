@@ -24,7 +24,7 @@ import threading
 import time
 from collections import deque
 from enum import Enum
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional
 
 from hardware import HardwareController
 
@@ -47,12 +47,18 @@ class FocusLockFSM:
     resolución sub-200 ms en el filtro antirrebote del sensor y temporización precisa.
     """
 
-    def __init__(self, hardware: HardwareController) -> None:
+    def __init__(
+        self,
+        hardware: HardwareController,
+        on_focus_completed: Optional[Callable[[Optional[str], Optional[str], int], None]] = None,
+    ) -> None:
         self.hw: HardwareController = hardware
         self.state: FSMState = FSMState.IDLE
         self.remaining_seconds: int = 0
         self.total_seconds: int = 0
         self.session_id: Optional[str] = None
+        self.user_id: Optional[str] = None
+        self._on_focus_completed = on_focus_completed
 
         self._focus_duration: int = 25 * 60
         self._break_duration: int = 5 * 60
@@ -92,6 +98,7 @@ class FocusLockFSM:
         session_id: Optional[str] = None,
         focus_seconds: Optional[int] = None,
         break_seconds: Optional[int] = None,
+        user_id: Optional[str] = None,
     ) -> None:
         """
         Inicia una sesión de estudio o demostración y pasa a WAITING_PHONE.
@@ -110,6 +117,7 @@ class FocusLockFSM:
             self.total_seconds = self._focus_duration
             self.remaining_seconds = self._focus_duration
             self.session_id = session_id or f"sess_{int(time.time())}"
+            self.user_id = user_id
             self.state = FSMState.WAITING_PHONE
             self._insertion_timer = self._insertion_timeout
 
@@ -194,6 +202,7 @@ class FocusLockFSM:
                 "remaining_seconds": self.remaining_seconds,
                 "total_seconds": self.total_seconds,
                 "session_id": self.session_id,
+                "user_id": self.user_id,
                 "is_locked": self.hw.is_locked,
                 "is_lid_closed": self.hw.is_lid_closed,
                 "lcd_line1": line1,
@@ -304,6 +313,16 @@ class FocusLockFSM:
                         self._record_event(
                             f"Enfoque finalizado con éxito. Cerrojo y tapa abiertos -> [BREAK_OPEN: {break_time_str}]"
                         )
+                        if self._on_focus_completed is not None:
+                            cb = self._on_focus_completed
+                            s_id = self.session_id
+                            u_id = self.user_id
+                            f_dur = self._focus_duration
+                            threading.Thread(
+                                target=cb,
+                                args=(s_id, u_id, f_dur),
+                                daemon=True,
+                            ).start()
 
                 # 4. BREAK_OPEN: Descanso con caja abierta
                 elif self.state == FSMState.BREAK_OPEN and tick_second:

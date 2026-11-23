@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -37,11 +40,18 @@ from database import (
     save_mongo_telemetry,
     save_mongo_session,
     get_mongo_recent_telemetry,
+    get_mongo_sessions,
+    get_mongo_summary,
     save_session,
     update_session_status,
     log_focus_event,
     log_noise_audit,
     get_recent_sessions,
+    register_user,
+    authenticate_user,
+    get_user_by_id,
+    award_session_points,
+    get_leaderboard,
     set_live_telemetry,
     get_live_telemetry,
     push_noise_sample,
@@ -59,7 +69,33 @@ logger = logging.getLogger("FocusLock.Server")
 
 # Instancias unificadas de Hardware (HAL) y Máquina de Estados (FSM)
 hw = HardwareController()
-fsm = FocusLockFSM(hardware=hw)
+
+
+def _on_focus_completed(session_id: Optional[str], user_id: Optional[str], focus_seconds: int) -> None:
+    """Callback ejecutado cuando una sesión de enfoque bloqueada termina con éxito."""
+    focus_minutes = max(1, round(focus_seconds / 60))
+    points = max(10, focus_minutes * 10)
+    try:
+        award_session_points(
+            user_id=user_id,
+            session_id=session_id,
+            points=points,
+            focus_minutes=focus_minutes,
+            final_status="COMPLETED",
+        )
+        if session_id:
+            log_focus_event(session_id, "SESSION_COMPLETED", {"points": points, "user_id": user_id})
+            save_mongo_session({
+                "id": session_id,
+                "status": "COMPLETED",
+                "points_awarded": points,
+                "user_id": user_id,
+            })
+    except Exception as exc:
+        logger.warning("Error asignando puntos al completar sesión %s: %s", session_id, exc)
+
+
+fsm = FocusLockFSM(hardware=hw, on_focus_completed=_on_focus_completed)
 
 def handle_mqtt_command(cmd: Dict[str, Any]) -> None:
     """Ejecuta comandos recibidos desde el broker Eclipse Mosquitto (tópico focuslock/commands)."""
@@ -82,7 +118,7 @@ mqtt_client = FocusLockMQTTClient(on_command=handle_mqtt_command)
 active_web_clients: Set[Any] = set()
 
 try:
-    from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+    from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel, Field
 
@@ -90,6 +126,45 @@ try:
 except ImportError:
     FASTAPI_AVAILABLE = False
     FastAPI = None  # type: ignore
+
+
+_AUTH_SECRET = (os.getenv("AUTH_SECRET") or os.getenv("DATABASE_URL") or "focuslock-dev-secret-key").encode("utf-8")
+
+
+def _sign_auth_token(user_id: str, ttl_seconds: int = 60 * 60 * 24 * 30) -> str:
+    """Genera un token HMAC-SHA256 stateless sin dependencias externas."""
+    exp = int(time.time()) + ttl_seconds
+    payload_b64 = base64.urlsafe_b64encode(f"{user_id}:{exp}".encode("utf-8")).decode("ascii").rstrip("=")
+    sig = hmac.new(_AUTH_SECRET, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{sig}"
+
+
+def _verify_auth_token(token: Optional[str]) -> Optional[str]:
+    """Valida el token Bearer y retorna el user_id o None si es inválido/expirado."""
+    if not token or "." not in token:
+        return None
+    try:
+        payload_b64, sig = token.split(".", 1)
+        expected_sig = hmac.new(_AUTH_SECRET, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected_sig):
+            return None
+        padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+        decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+        user_id, exp_str = decoded.rsplit(":", 1)
+        if int(exp_str) < int(time.time()):
+            return None
+        return user_id
+    except Exception:
+        return None
+
+
+def _extract_bearer_user_id(authorization: Optional[str]) -> Optional[str]:
+    if not authorization:
+        return None
+    parts = authorization.strip().split(" ", 1)
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return _verify_auth_token(parts[1].strip())
+    return _verify_auth_token(authorization.strip())
 
 if FASTAPI_AVAILABLE:
     app = FastAPI(
@@ -114,6 +189,18 @@ if FASTAPI_AVAILABLE:
         break_seconds: Optional[int] = Field(default=None, ge=1, le=3600, description="Segundos de descanso para muestra")
         session_id: Optional[str] = None
         session_name: Optional[str] = "Sesión de Enfoque FocusLock"
+        user_id: Optional[str] = None
+
+    class RegisterRequest(BaseModel):
+        username: str = Field(min_length=2, max_length=40)
+        email: str = Field(min_length=4, max_length=120)
+        password: str = Field(min_length=4, max_length=128)
+
+    class LoginRequest(BaseModel):
+        identifier: Optional[str] = None
+        email: Optional[str] = None
+        username: Optional[str] = None
+        password: str = Field(min_length=1, max_length=128)
 
     class EmergencyUnlockRequest(BaseModel):
         auth_token: Optional[str] = None
@@ -238,16 +325,70 @@ if FASTAPI_AVAILABLE:
             return FileResponse(dash_path)
         return {"error": "dashboard.html not found"}
 
+    # =========================================================================
+    # AUTENTICACIÓN Y RANKING DE USUARIOS (PostgreSQL / SQLite)
+    # =========================================================================
+    @app.post("/api/auth/register")
+    def auth_register(req: RegisterRequest) -> Dict[str, Any]:
+        """Registra un usuario real con contraseña segura y devuelve su token de sesión."""
+        res = register_user(req.username, req.email, req.password)
+        if not res.get("ok"):
+            raise HTTPException(status_code=400, detail=res.get("error", "No se pudo registrar el usuario."))
+        user = res["user"]
+        return {
+            "ok": True,
+            "token": _sign_auth_token(user["id"]),
+            "user": user,
+        }
+
+    @app.post("/api/auth/login")
+    def auth_login(req: LoginRequest) -> Dict[str, Any]:
+        """Inicia sesión por correo o nombre de usuario y devuelve token + perfil."""
+        ident = (req.identifier or req.email or req.username or "").strip()
+        if not ident:
+            raise HTTPException(status_code=400, detail="Debes ingresar tu correo o usuario.")
+        res = authenticate_user(ident, req.password)
+        if not res.get("ok"):
+            raise HTTPException(status_code=401, detail=res.get("error", "Credenciales inválidas."))
+        user = res["user"]
+        return {
+            "ok": True,
+            "token": _sign_auth_token(user["id"]),
+            "user": user,
+        }
+
+    @app.get("/api/auth/me")
+    def auth_me(authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+        """Devuelve el perfil y puntos actualizados del usuario autenticado."""
+        user_id = _extract_bearer_user_id(authorization)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Token ausente o inválido.")
+        user = get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        return {"ok": True, "user": user}
+
+    @app.get("/api/leaderboard")
+    def api_leaderboard(limit: int = 10) -> Dict[str, Any]:
+        """Ranking de usuarios por puntos acumulados y minutos de enfoque."""
+        rows = get_leaderboard(limit=limit)
+        return {"ok": True, "count": len(rows), "leaderboard": rows}
+
     @app.post("/api/session/start")
-    def start_session(req: StartSessionRequest) -> Dict[str, Any]:
+    def start_session(
+        req: StartSessionRequest,
+        authorization: Optional[str] = Header(default=None),
+    ) -> Dict[str, Any]:
         """Inicia una sesión de estudio o demostración acelerada y la persiste en PostgreSQL."""
         s_id = req.session_id or f"sess_{int(time.time() * 1000)}"
+        resolved_user_id = _extract_bearer_user_id(authorization) or req.user_id
         fsm.start_session(
             focus_minutes=req.focus_minutes or 25,
             break_minutes=req.break_minutes or 5,
             session_id=s_id,
             focus_seconds=req.focus_seconds,
             break_seconds=req.break_seconds,
+            user_id=resolved_user_id,
         )
         mode = f"{req.focus_seconds}s (Demo)" if req.focus_seconds else f"{req.focus_minutes}m"
 
@@ -260,10 +401,11 @@ if FASTAPI_AVAILABLE:
             "target_minutes": req.focus_minutes or 25,
             "remaining_seconds": total_sec,
             "status": fsm.state.value,
+            "user_id": resolved_user_id,
         }
         save_session(session_dict)
         save_mongo_session(session_dict)
-        log_focus_event(s_id, "SESSION_START", {"mode": mode, "seconds": total_sec})
+        log_focus_event(s_id, "SESSION_START", {"mode": mode, "seconds": total_sec, "user_id": resolved_user_id})
 
         return {
             "ok": True,
@@ -318,9 +460,9 @@ if FASTAPI_AVAILABLE:
     # ENDPOINTS DE BASES DE DATOS (PostgreSQL & Redis)
     # =========================================================================
     @app.get("/api/db/sessions")
-    def get_sessions_history(limit: int = 15) -> Dict[str, Any]:
+    def get_sessions_history(limit: int = 15, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Consulta histórica desde PostgreSQL (Base de Datos 1)."""
-        sessions = get_recent_sessions(limit=limit)
+        sessions = get_recent_sessions(limit=limit, user_id=user_id)
         return {
             "database": "PostgreSQL (Relational)",
             "count": len(sessions),
@@ -358,10 +500,22 @@ if FASTAPI_AVAILABLE:
             "documents": recent,
         }
 
+    @app.get("/api/db/mongo-summary")
+    def get_mongodb_summary(
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Resumen analítico de telemetría (promedios de atención, dB, infracciones y sesiones) en MongoDB Atlas."""
+        summary = get_mongo_summary(session_id=session_id, user_id=user_id)
+        summary["sessions"] = get_mongo_sessions(limit=10, user_id=user_id)
+        return summary
+
     @app.post("/api/telemetry/report")
     def post_telemetry_report(payload: LocalTelemetryPayload) -> Dict[str, Any]:
         """Endpoint REST alternativo para reporte de módulo local."""
         data = payload.dict()
+        if fsm.session_id and "session_id" not in data:
+            data["session_id"] = fsm.session_id
         set_live_telemetry(data)
         save_mongo_telemetry(data)
         push_noise_sample({
@@ -396,6 +550,8 @@ if FASTAPI_AVAILABLE:
                     continue
 
                 # 1. Guardar en Base de Datos: Redis y MongoDB
+                if fsm.session_id and "session_id" not in payload:
+                    payload["session_id"] = fsm.session_id
                 set_live_telemetry(payload)
                 save_mongo_telemetry(payload)
                 if "decibels" in payload:

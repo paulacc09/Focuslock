@@ -50,6 +50,7 @@
 </head>
 <body>
   <span class="mfe-badge">MFE-1 • Estación Física & FSM</span>
+  <div id="stationUserHint" style="font-size:11px;font-weight:700;color:var(--text-sec);margin-bottom:8px;">Modo invitado (inicia sesión arriba para sumar puntos)</div>
   <div id="fsmBanner" class="fsm-banner">IDLE — SISTEMA LISTO</div>
 
   <div id="timerRing" class="timer-ring">
@@ -89,6 +90,22 @@
   <script>
     const params = new URLSearchParams(window.location.search);
     let apiBase = (params.get('api') || 'https://focuslock-server-q3bw.onrender.com').replace(/\/+$/, '');
+    let authToken = localStorage.getItem('focuslock_token') || '';
+    let authUser = null;
+    try { authUser = JSON.parse(localStorage.getItem('focuslock_user') || 'null'); } catch (e) {}
+
+    function updateStationUserHint() {
+      const el = document.getElementById('stationUserHint');
+      if (!el) return;
+      if (authToken && authUser) {
+        el.textContent = `👤 Vinculado a ${authUser.username} (🏆 ${authUser.points || 0} pts)`;
+        el.style.color = 'var(--break)';
+      } else {
+        el.textContent = 'Modo invitado (inicia sesión arriba para sumar puntos)';
+        el.style.color = 'var(--text-sec)';
+      }
+    }
+    updateStationUserHint();
 
     function fmt(sec) {
       const s = Math.max(0, parseInt(sec || 0, 10));
@@ -153,9 +170,11 @@
 
     async function sendAction(path, body) {
       try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
         await fetch(apiBase + path, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: body ? JSON.stringify(body) : undefined
         });
         window.parent.postMessage({ source: 'mfe-station', type: 'refresh' }, '*');
@@ -167,6 +186,11 @@
     window.addEventListener('message', (ev) => {
       const msg = ev.data || {};
       if (msg.type === 'set_api' && msg.apiBase) apiBase = msg.apiBase;
+      if (msg.type === 'auth_update') {
+        authToken = msg.token || '';
+        authUser = msg.user || null;
+        updateStationUserHint();
+      }
       if (msg.type === 'fsm_update' && msg.data) applyFsm(msg.data);
       if (msg.type === 'hw_update' && msg.data) applyTelemetry(msg.data);
     });

@@ -10,6 +10,11 @@ from .postgres import (
     log_noise_audit,
     get_recent_sessions,
     get_session_by_id,
+    register_user,
+    authenticate_user,
+    get_user_by_id,
+    award_session_points,
+    get_leaderboard,
 )
 from .redis_store import (
     init_redis,
@@ -26,6 +31,8 @@ from .mongodb import (
     save_mongo_telemetry,
     save_mongo_session,
     get_mongo_recent_telemetry,
+    get_mongo_sessions,
+    get_mongo_summary,
 )
 
 __all__ = [
@@ -37,6 +44,11 @@ __all__ = [
     "log_noise_audit",
     "get_recent_sessions",
     "get_session_by_id",
+    "register_user",
+    "authenticate_user",
+    "get_user_by_id",
+    "award_session_points",
+    "get_leaderboard",
     "init_redis",
     "set_live_telemetry",
     "get_live_telemetry",
@@ -49,4 +61,6 @@ __all__ = [
     "save_mongo_telemetry",
     "save_mongo_session",
     "get_mongo_recent_telemetry",
+    "get_mongo_sessions",
+    "get_mongo_summary",
 ]

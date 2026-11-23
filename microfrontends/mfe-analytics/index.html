@@ -21,19 +21,26 @@
       padding: 9px 10px; font-size: 12px; font-weight: 800;
     }
     .db-ok { color: #16A34A; font-size: 11px; margin-top: 2px; }
-    .section-title { font-size: 12.5px; font-weight: 800; color: var(--text-sec); margin: 8px 0 6px; text-transform: uppercase; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--bg); border-radius: 10px; overflow: hidden; }
-    th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    .mongo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+    .metric-box {
+      background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px;
+      padding: 6px 8px; text-align: center;
+    }
+    .metric-val { font-size: 13px; font-weight: 900; color: var(--text); }
+    .metric-lbl { font-size: 10px; font-weight: 700; color: var(--text-sec); }
+    .section-title { font-size: 12px; font-weight: 800; color: var(--text-sec); margin: 8px 0 5px; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; font-size: 11.5px; background: var(--bg); border-radius: 10px; overflow: hidden; }
+    th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
     th { background: #EAF1EF; color: var(--sage-dark); font-weight: 800; }
     .log-box {
       background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px;
-      padding: 9px; font-family: Consolas, monospace; font-size: 11.5px;
-      color: var(--text-sec); max-height: 120px; overflow-y: auto; margin-top: 6px;
+      padding: 8px; font-family: Consolas, monospace; font-size: 11px;
+      color: var(--text-sec); max-height: 92px; overflow-y: auto; margin-top: 6px;
     }
   </style>
 </head>
 <body>
-  <span class="mfe-badge">MFE-3 • Bases de Datos & Bitácora</span>
+  <span class="mfe-badge">MFE-3 • Bases de Datos &amp; Bitácora</span>
 
   <div class="db-pills">
     <div class="db-pill">
@@ -46,13 +53,30 @@
     </div>
   </div>
 
+  <div class="mongo-grid">
+    <div class="metric-box"><div id="mgDocs" class="metric-val">--</div><div class="metric-lbl">Docs Mongo</div></div>
+    <div class="metric-box"><div id="mgAtt" class="metric-val">--%</div><div class="metric-lbl">Atención Prom</div></div>
+    <div class="metric-box"><div id="mgDb" class="metric-val">-- dB</div><div class="metric-lbl">Ruido Prom</div></div>
+    <div class="metric-box"><div id="mgAlerts" class="metric-val">0</div><div class="metric-lbl">Alertas Ruido</div></div>
+  </div>
+
   <div class="section-title">Historial de Sesiones (PostgreSQL)</div>
   <table>
     <thead>
-      <tr><th>Sesión</th><th>Modo</th><th>Estado</th></tr>
+      <tr><th>Sesión</th><th>Modo</th><th>Pts</th><th>Estado</th></tr>
     </thead>
     <tbody id="sessionsBody">
-      <tr><td colspan="3">Cargando sesiones...</td></tr>
+      <tr><td colspan="4">Cargando sesiones...</td></tr>
+    </tbody>
+  </table>
+
+  <div class="section-title">🏆 Ranking de Enfoque</div>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Usuario</th><th>Pts</th><th>Sesiones</th></tr>
+    </thead>
+    <tbody id="leaderboardBody">
+      <tr><td colspan="4">Cargando ranking...</td></tr>
     </tbody>
   </table>
 
@@ -63,38 +87,75 @@
     const params = new URLSearchParams(window.location.search);
     let apiBase = (params.get('api') || 'https://focuslock-server-q3bw.onrender.com').replace(/\/+$/, '');
     const logs = [];
+    let currentUserId = '';
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
 
     function pushLog(txt) {
       const t = new Date().toLocaleTimeString();
-      logs.unshift(`[${t}] ${txt}`);
+      logs.unshift(`[${t}] ${esc(txt)}`);
       if (logs.length > 8) logs.pop();
       document.getElementById('eventLog').innerHTML = logs.map(l => `<div>${l}</div>`).join('');
     }
 
     async function refreshData() {
       try {
-        const [resRoot, resSess] = await Promise.all([
+        const sessUrl = currentUserId
+          ? `${apiBase}/api/db/sessions?limit=4&user_id=${encodeURIComponent(currentUserId)}`
+          : `${apiBase}/api/db/sessions?limit=4`;
+
+        const [resRoot, resSess, resMongo, resLb] = await Promise.all([
           fetch(apiBase + '/'),
-          fetch(apiBase + '/api/db/sessions?limit=5')
+          fetch(sessUrl),
+          fetch(apiBase + '/api/db/mongo-summary'),
+          fetch(apiBase + '/api/leaderboard?limit=4')
         ]);
+
         if (resRoot.ok) {
           const info = await resRoot.json();
           const dbs = info.databases || {};
           document.getElementById('pgStatus').textContent = dbs.postgres ? '● Activa' : '● Inactiva';
           document.getElementById('mongoStatus').textContent = dbs.mongodb ? '● Activa' : '● En espera';
         }
+        if (resMongo.ok) {
+          const mg = await resMongo.json();
+          document.getElementById('mgDocs').textContent = mg.total_telemetry_docs ?? 0;
+          document.getElementById('mgAtt').textContent = mg.avg_attention != null ? `${mg.avg_attention}%` : '--%';
+          document.getElementById('mgDb').textContent = mg.avg_decibels != null ? `${mg.avg_decibels} dB` : '-- dB';
+          document.getElementById('mgAlerts').textContent = mg.noise_violations ?? 0;
+        }
         if (resSess.ok) {
           const data = await resSess.json();
           const rows = data.sessions || [];
           const tbody = document.getElementById('sessionsBody');
           if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3">Sin sesiones registradas</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4">Sin sesiones registradas</td></tr>';
           } else {
             tbody.innerHTML = rows.map(s => `
               <tr>
-                <td><b>${s.session_name || s.id}</b></td>
-                <td>${s.mode}</td>
-                <td style="font-weight:800; color:${s.status==='COMPLETED'?'#16A34A':'#D96B4F'}">${s.status}</td>
+                <td><b>${esc(s.session_name || s.id)}</b></td>
+                <td>${esc(s.mode)}</td>
+                <td>+${Number(s.points_awarded || 0)}</td>
+                <td style="font-weight:800; color:${s.status==='COMPLETED'?'#16A34A':'#D96B4F'}">${esc(s.status)}</td>
+              </tr>
+            `).join('');
+          }
+        }
+        if (resLb.ok) {
+          const lbData = await resLb.json();
+          const lb = lbData.leaderboard || [];
+          const lbBody = document.getElementById('leaderboardBody');
+          if (lb.length === 0) {
+            lbBody.innerHTML = '<tr><td colspan="4">Aún no hay usuarios registrados</td></tr>';
+          } else {
+            lbBody.innerHTML = lb.map((u, idx) => `
+              <tr>
+                <td><b>#${idx + 1}</b></td>
+                <td>${esc(u.username)}</td>
+                <td><b>${Number(u.points || 0)}</b></td>
+                <td>${Number(u.sessions_completed || 0)}</td>
               </tr>
             `).join('');
           }
@@ -108,6 +169,10 @@
       const msg = ev.data || {};
       if (msg.type === 'set_api' && msg.apiBase) {
         apiBase = msg.apiBase;
+        refreshData();
+      }
+      if (msg.type === 'auth_update') {
+        currentUserId = (msg.user && msg.user.id) ? msg.user.id : '';
         refreshData();
       }
       if (msg.type === 'log_event' && msg.text) {

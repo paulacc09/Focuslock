@@ -37,6 +37,58 @@
     }
     .pill-ok { background: #E2F1E8; color: #16A34A; border-color: #86EFAC; }
     .pill-warn { background: #FFF0D9; color: #D97706; border-color: #FCD34D; }
+    .btn-auth {
+      background: var(--sage); color: #FFF; border: none; border-radius: 99px;
+      padding: 8px 15px; font-size: 12.5px; font-weight: 800; cursor: pointer;
+    }
+    .btn-auth:hover { background: var(--sage-dark); }
+    .btn-logout {
+      background: #FEE2E2; color: #B91C1C; border: 1.5px solid #FCA5A5; border-radius: 99px;
+      padding: 6px 11px; font-size: 12px; font-weight: 800; cursor: pointer;
+    }
+    .user-pill {
+      display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+      border-radius: 99px; background: #EAF1EF; border: 2px solid var(--sage);
+      font-size: 12.5px; font-weight: 800; color: var(--text);
+    }
+    .pts-badge {
+      background: #FEF3C7; color: #B45309; padding: 2px 8px; border-radius: 99px;
+      font-size: 11.5px; font-weight: 900;
+    }
+
+    /* Modal Auth */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(25, 42, 36, 0.45);
+      display: none; align-items: center; justify-content: center; z-index: 999; padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-card {
+      background: var(--card); border: 2px solid var(--border); border-radius: 22px;
+      width: 100%; max-width: 390px; padding: 22px; box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+    }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .modal-title { font-size: 18px; font-weight: 900; }
+    .modal-close {
+      background: #EAF1EF; border: none; border-radius: 10px; width: 32px; height: 32px;
+      font-weight: 900; cursor: pointer; color: var(--text-sec);
+    }
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .tab-btn {
+      padding: 9px; border-radius: 12px; border: 2px solid var(--border);
+      background: var(--bg); font-weight: 800; font-size: 13px; cursor: pointer; color: var(--text-sec);
+    }
+    .tab-btn.active { background: var(--sage); color: #FFF; border-color: var(--sage); }
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 12px; font-weight: 800; color: var(--text-sec); margin-bottom: 4px; }
+    .field input { width: 100%; }
+    .auth-error {
+      background: #FEE2E2; color: #B91C1C; border-radius: 10px; padding: 8px 10px;
+      font-size: 12px; font-weight: 700; margin-bottom: 10px; display: none;
+    }
+    .btn-submit {
+      width: 100%; padding: 11px; border-radius: 12px; border: none;
+      background: var(--sage); color: #FFF; font-weight: 900; font-size: 14px; cursor: pointer;
+    }
 
     .mfe-grid {
       display: grid; grid-template-columns: repeat(3, minmax(310px, 1fr)); gap: 18px;
@@ -71,10 +123,45 @@
         <option value="http://192.168.43.157:8000">🍓 Raspberry Pi (Local)</option>
         <option value="http://localhost:8000">💻 Localhost (:8000)</option>
       </select>
-      <input type="text" id="apiHost" value="https://focuslock-server-q3bw.onrender.com" style="width: 260px;" onchange="changeHost()" />
+      <input type="text" id="apiHost" value="https://focuslock-server-q3bw.onrender.com" style="width: 240px;" onchange="changeHost()" />
       <span id="wsBadge" class="pill pill-warn">WS: Conectando...</span>
+      <button id="btnOpenAuth" class="btn-auth" onclick="openAuthModal('login')">👤 Iniciar Sesión</button>
+      <div id="userBadge" class="user-pill" style="display:none;">
+        <span id="userNameLbl">👤 Usuario</span>
+        <span id="userPtsLbl" class="pts-badge">🏆 0 pts</span>
+        <button class="btn-logout" onclick="logoutUser()">Salir</button>
+      </div>
     </div>
   </header>
+
+  <div id="authModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">🦫 Cuenta FocusLock</div>
+        <button class="modal-close" onclick="closeAuthModal()">✕</button>
+      </div>
+      <div class="tabs">
+        <button id="tabLogin" class="tab-btn active" onclick="switchAuthTab('login')">Iniciar Sesión</button>
+        <button id="tabRegister" class="tab-btn" onclick="switchAuthTab('register')">Crear Cuenta</button>
+      </div>
+      <div id="authError" class="auth-error"></div>
+      <form onsubmit="submitAuth(event)">
+        <div id="usernameField" class="field" style="display:none;">
+          <label>Nombre de usuario</label>
+          <input type="text" id="authUsername" placeholder="ej. paula_focus" />
+        </div>
+        <div class="field">
+          <label id="emailLabel">Correo o usuario</label>
+          <input type="text" id="authEmail" placeholder="tu@correo.com" required />
+        </div>
+        <div class="field">
+          <label>Contraseña</label>
+          <input type="password" id="authPassword" placeholder="Mínimo 4 caracteres" required />
+        </div>
+        <button id="authSubmitBtn" type="submit" class="btn-submit">Entrar</button>
+      </form>
+    </div>
+  </div>
 
   <main class="mfe-grid">
     <section class="mfe-card">
@@ -96,6 +183,113 @@
     const frames = ['mfeStation', 'mfeSensors', 'mfeAnalytics'];
     let ws = null;
     let lastState = '';
+    let authMode = 'login';
+    let authToken = localStorage.getItem('focuslock_token') || '';
+    let authUser = null;
+    try { authUser = JSON.parse(localStorage.getItem('focuslock_user') || 'null'); } catch (e) { authUser = null; }
+
+    function renderAuthUI() {
+      const btn = document.getElementById('btnOpenAuth');
+      const badge = document.getElementById('userBadge');
+      if (authToken && authUser) {
+        btn.style.display = 'none';
+        badge.style.display = 'inline-flex';
+        document.getElementById('userNameLbl').textContent = '👤 ' + (authUser.username || 'Usuario');
+        document.getElementById('userPtsLbl').textContent = '🏆 ' + (authUser.points || 0) + ' pts';
+      } else {
+        btn.style.display = 'inline-block';
+        badge.style.display = 'none';
+      }
+      broadcastToMicrofrontends({ type: 'auth_update', token: authToken, user: authUser });
+    }
+
+    function openAuthModal(mode) {
+      switchAuthTab(mode || 'login');
+      document.getElementById('authError').style.display = 'none';
+      document.getElementById('authModal').classList.add('open');
+    }
+
+    function closeAuthModal() {
+      document.getElementById('authModal').classList.remove('open');
+    }
+
+    function switchAuthTab(mode) {
+      authMode = mode;
+      const isReg = mode === 'register';
+      document.getElementById('tabLogin').classList.toggle('active', !isReg);
+      document.getElementById('tabRegister').classList.toggle('active', isReg);
+      document.getElementById('usernameField').style.display = isReg ? 'block' : 'none';
+      document.getElementById('emailLabel').textContent = isReg ? 'Correo electrónico' : 'Correo o usuario';
+      document.getElementById('authSubmitBtn').textContent = isReg ? 'Registrarme' : 'Entrar';
+      document.getElementById('authError').style.display = 'none';
+    }
+
+    async function submitAuth(ev) {
+      ev.preventDefault();
+      const api = getApiBase();
+      const errEl = document.getElementById('authError');
+      errEl.style.display = 'none';
+      const emailOrIdent = document.getElementById('authEmail').value.trim();
+      const password = document.getElementById('authPassword').value;
+      const username = document.getElementById('authUsername').value.trim();
+
+      const endpoint = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+      const body = authMode === 'register'
+        ? { username, email: emailOrIdent, password }
+        : { identifier: emailOrIdent, password };
+
+      try {
+        const res = await fetch(api + endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          errEl.textContent = data.detail || data.error || 'Error de autenticación.';
+          errEl.style.display = 'block';
+          return;
+        }
+        authToken = data.token;
+        authUser = data.user;
+        localStorage.setItem('focuslock_token', authToken);
+        localStorage.setItem('focuslock_user', JSON.stringify(authUser));
+        closeAuthModal();
+        renderAuthUI();
+        broadcastToMicrofrontends({ type: 'log_event', text: `Sesión iniciada como ${authUser.username}` });
+      } catch (e) {
+        errEl.textContent = 'No se pudo conectar con el servidor.';
+        errEl.style.display = 'block';
+      }
+    }
+
+    async function refreshAuthProfile() {
+      if (!authToken) return;
+      try {
+        const res = await fetch(getApiBase() + '/api/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + authToken },
+          cache: 'no-store'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            authUser = data.user;
+            localStorage.setItem('focuslock_user', JSON.stringify(authUser));
+            renderAuthUI();
+          }
+        } else if (res.status === 401) {
+          logoutUser();
+        }
+      } catch (e) {}
+    }
+
+    function logoutUser() {
+      authToken = '';
+      authUser = null;
+      localStorage.removeItem('focuslock_token');
+      localStorage.removeItem('focuslock_user');
+      renderAuthUI();
+    }
 
     function getApiBase() {
       return document.getElementById('apiHost').value.trim().replace(/\/+$/, '');
@@ -187,12 +381,21 @@
     window.addEventListener('message', (ev) => {
       if (ev.data && ev.data.type === 'refresh') {
         pollOnce();
+        refreshAuthProfile();
       }
     });
 
+    frames.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('load', () => renderAuthUI());
+    });
+
+    renderAuthUI();
+    refreshAuthProfile();
     connectWS();
     pollOnce();
     setInterval(pollOnce, 1200);
+    setInterval(refreshAuthProfile, 10000);
   </script>
 </body>
 </html>
