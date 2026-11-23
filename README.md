@@ -55,15 +55,16 @@ flowchart TD
 
 ## 🌟 Cumplimiento de Requisitos
 
-1. **Despliegue en la nube:** Desplegable en Render, Railway, Fly.io o VPS con `Dockerfile` optimizado, orquestación `docker-compose.yml`, configuración `render.yaml` y variables en `.env.example`.
-2. **Módulo local (`/local-module`):** Servicio autónomo en PC que captura cámara y micrófono, procesa métricas de atención y ruido, tolera caídas de la nube con SQLite local y se ejecuta con un solo comando.
-3. **Funcionalidad con sockets:** Canales WebSocket `/ws/telemetry` (módulo local) y `/ws/live` (dashboard web) para streaming bidireccional en tiempo real.
-4. **Cámara y micrófono:** Captura visual con OpenCV (presencia y atención) y acústica con decibelios RMS, con fallback interactivo en el navegador mediante `getUserMedia` y HTTPS.
+1. **Despliegue en la nube:** Backend Docker desplegado en **Render Cloud** (`https://focuslock-server-q3bw.onrender.com`) con `Dockerfile`, `docker-compose.yml` y `render.yaml`.
+2. **Módulo local (`/local-module` y Raspberry Pi 5):** Servicio autónomo en PC (`run_local.py`) que captura cámara y micrófono con tolerancia a caídas en SQLite, y servidor embebido en Raspberry Pi 5 con broker **Eclipse Mosquitto (MQTT)**.
+3. **Funcionalidad con sockets:** Canales WebSocket `/ws/telemetry` (módulo local) y `/ws/live` (dashboard web) para streaming bidireccional en tiempo real, más tópicos MQTT (`focuslock/fsm/state`, `focuslock/hardware/telemetry`, `focuslock/commands`).
+4. **Cámara y micrófono:** Captura visual con OpenCV / TensorFlow.js BlazeFace (presencia, atención y giro de cabeza) y acústica con decibelios RMS en tiempo real.
 5. **Mínimo 2 bases de datos:**
-   - **PostgreSQL:** Base relacional para sesiones, métricas consolidadas e infracciones de ruido.
-   - **Redis:** Base NoSQL/Caché para telemetría viva de alta frecuencia y bus Pub/Sub entre réplicas.
-6. **Balanceador de cargas:** Nginx configurado con `ip_hash` (sticky sessions) para WebSockets y 2 réplicas del servidor sincronizadas mediante Redis adapter.
-7. **Hosting + dominio:** Conexión configurada para el dominio `https://digiproy.qd.je` con gestión de registros DNS externos y certificados SSL/TLS automáticos.
+   - **PostgreSQL (Render Cloud):** Base relacional para sesiones, eventos e infracciones de ruido.
+   - **MongoDB Atlas (NoSQL Documental):** Almacenamiento documental de telemetría e historial en la nube.
+   - **Redis / SQLite:** Caché en memoria de alta frecuencia y buffer offline local.
+6. **Balanceador de cargas:** Nginx configurado con `ip_hash` (sticky sessions) para WebSockets y 2 réplicas del servidor (`docker-compose.yml`).
+7. **Microfrontends y Hosting + dominio:** Interfaz dividida en **Shell Host + 3 Microfrontends** (`microfrontends/shell`, `mfe-station`, `mfe-sensors`, `mfe-analytics`) desplegada en **Render Static Site** bajo el dominio **`https://digiproy.qd.je`**.
 8. **100% en GitHub:** Todo el código, `.gitignore` limpio, workflows de CI/CD en `.github/workflows/deploy.yml` y documentación completa.
 
 ---
