@@ -15,6 +15,9 @@ from .postgres import (
     get_user_by_id,
     award_session_points,
     get_leaderboard,
+    get_user_categories,
+    create_user_category,
+    delete_user_category,
 )
 from .redis_store import (
     init_redis,
@@ -49,6 +52,9 @@ __all__ = [
     "get_user_by_id",
     "award_session_points",
     "get_leaderboard",
+    "get_user_categories",
+    "create_user_category",
+    "delete_user_category",
     "init_redis",
     "set_live_telemetry",
     "get_live_telemetry",

@@ -123,6 +123,20 @@ def init_postgres() -> None:
                     # 5. Migración no destructiva en focus_sessions para vincular user_id y puntos
                     cur.execute("ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR(64);")
                     cur.execute("ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS points_awarded INT NOT NULL DEFAULT 0;")
+                    # 6. Tabla de categorías personalizadas por usuario
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS user_categories (
+                            id VARCHAR(64) PRIMARY KEY,
+                            user_id VARCHAR(64) NOT NULL,
+                            name VARCHAR(80) NOT NULL,
+                            subtitle VARCHAR(120) DEFAULT '',
+                            icon_index INT NOT NULL DEFAULT 0,
+                            color_value BIGINT NOT NULL,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                        );
+                        """
+                    )
                 conn.commit()
                 conn.close()
                 logger.info("Migraciones en PostgreSQL aplicadas exitosamente.")
@@ -194,6 +208,19 @@ def init_postgres() -> None:
                 cur.execute("ALTER TABLE focus_sessions ADD COLUMN user_id TEXT;")
             if "points_awarded" not in existing_cols:
                 cur.execute("ALTER TABLE focus_sessions ADD COLUMN points_awarded INTEGER NOT NULL DEFAULT 0;")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_categories (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    subtitle TEXT DEFAULT '',
+                    icon_index INTEGER NOT NULL DEFAULT 0,
+                    color_value INTEGER NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
             conn.commit()
             logger.info("Migraciones en SQLite local aplicadas exitosamente.")
             seed_postgres()
@@ -706,3 +733,124 @@ def get_leaderboard(limit: int = 10) -> List[Dict[str, Any]]:
     except Exception as exc:
         logger.error("Error consultando leaderboard: %s", exc)
         return []
+
+
+def get_user_categories(user_id: str) -> List[Dict[str, Any]]:
+    """Lista las categorías personalizadas de un usuario ordenadas por creación."""
+    try:
+        conn = get_connection()
+        if _using_postgres:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, user_id, name, subtitle, icon_index, color_value, created_at
+                    FROM user_categories
+                    WHERE user_id = %s
+                    ORDER BY created_at ASC
+                    """,
+                    (user_id,),
+                )
+                rows = cur.fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        else:
+            with _sqlite_lock:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT id, user_id, name, subtitle, icon_index, color_value, created_at
+                    FROM user_categories
+                    WHERE user_id = ?
+                    ORDER BY created_at ASC
+                    """,
+                    (user_id,),
+                )
+                rows = cur.fetchall()
+                return [dict(r) for r in rows]
+    except Exception as exc:
+        logger.error("Error consultando categorías de usuario: %s", exc)
+        return []
+
+
+def create_user_category(
+    user_id: str,
+    name: str,
+    subtitle: str = "",
+    icon_index: int = 0,
+    color_value: int = 0xFF7EAE9B,
+    cat_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Crea una categoría personalizada para el usuario."""
+    clean_name = name.strip()
+    if not clean_name:
+        return None
+    cid = cat_id or f"cat_{uuid.uuid4().hex[:12]}"
+    try:
+        conn = get_connection()
+        if _using_postgres:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO user_categories (id, user_id, name, subtitle, icon_index, color_value)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        subtitle = EXCLUDED.subtitle,
+                        icon_index = EXCLUDED.icon_index,
+                        color_value = EXCLUDED.color_value
+                    RETURNING id, user_id, name, subtitle, icon_index, color_value, created_at;
+                    """,
+                    (cid, user_id, clean_name, subtitle.strip(), icon_index, color_value),
+                )
+                row = cur.fetchone()
+            conn.commit()
+            conn.close()
+            return dict(row) if row else None
+        else:
+            with _sqlite_lock:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT OR REPLACE INTO user_categories (id, user_id, name, subtitle, icon_index, color_value)
+                    VALUES (?, ?, ?, ?, ?, ?);
+                    """,
+                    (cid, user_id, clean_name, subtitle.strip(), icon_index, color_value),
+                )
+                conn.commit()
+                cur.execute(
+                    "SELECT id, user_id, name, subtitle, icon_index, color_value, created_at FROM user_categories WHERE id = ?",
+                    (cid,),
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except Exception as exc:
+        logger.error("Error creando categoría: %s", exc)
+        return None
+
+
+def delete_user_category(user_id: str, category_id: str) -> bool:
+    """Elimina una categoría personalizada perteneciente al usuario."""
+    try:
+        conn = get_connection()
+        if _using_postgres:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM user_categories WHERE id = %s AND user_id = %s",
+                    (category_id, user_id),
+                )
+                deleted = cur.rowcount > 0
+            conn.commit()
+            conn.close()
+            return deleted
+        else:
+            with _sqlite_lock:
+                cur = conn.cursor()
+                cur.execute(
+                    "DELETE FROM user_categories WHERE id = ? AND user_id = ?",
+                    (category_id, user_id),
+                )
+                conn.commit()
+                return cur.rowcount > 0
+    except Exception as exc:
+        logger.error("Error eliminando categoría: %s", exc)
+        return False

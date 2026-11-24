@@ -1,8 +1,12 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/models/focus_lock_state.dart';
+import '../../../../core/models/task_item.dart';
+import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/providers/focus_lock_provider.dart';
+import '../../../../core/providers/schedule_provider.dart';
 import '../../../../shared/widgets/circular_pomodoro_timer.dart';
 import '../../../../shared/widgets/locky_mascot.dart';
 import '../../../connection/presentation/screens/connection_screen.dart';
@@ -17,33 +21,203 @@ class HomePomodoroScreen extends StatefulWidget {
 class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
   bool _isSettingUp = false;
   int _selectedSubjectIndex = 0;
+  late final FixedExtentScrollController _hoursWheelCtrl;
+  late final FixedExtentScrollController _minutesWheelCtrl;
+  late final FixedExtentScrollController _breakWheelCtrl;
 
-  final List<Map<String, dynamic>> _subjects = [
-    {
-      'name': 'Electrónica Digital III',
-      'icon': Icons.memory_rounded,
-      'code': 'FSM y Hardware',
-      'color': AppColors.primarySage,
-    },
-    {
-      'name': 'Cálculo IV',
-      'icon': Icons.calculate_rounded,
-      'code': 'Ecuaciones Dif.',
-      'color': AppColors.terracottaBrown,
-    },
-    {
-      'name': 'Señales y Sistemas',
-      'icon': Icons.waves_rounded,
-      'code': 'Laboratorio Fourier',
-      'color': AppColors.focusChipText,
-    },
-    {
-      'name': 'Lectura e Investigación',
-      'icon': Icons.menu_book_rounded,
-      'code': 'Estudio Profundo',
-      'color': AppColors.textSecondary,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final initialProvider = context.read<FocusLockProvider>();
+    final initTotal = initialProvider.selectedFocusMinutes;
+    _hoursWheelCtrl = FixedExtentScrollController(initialItem: (initTotal ~/ 60).clamp(0, 3));
+    _minutesWheelCtrl = FixedExtentScrollController(initialItem: initTotal % 60);
+    _breakWheelCtrl = FixedExtentScrollController(
+      initialItem: (initialProvider.selectedBreakMinutes - 1).clamp(0, 29),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final baseUrl = context.read<FocusLockProvider>().baseUrl;
+      final auth = context.read<AuthProvider>();
+      auth.refreshProfile(baseUrl);
+      auth.fetchMetricsData(baseUrl);
+      context.read<ScheduleProvider>().syncCategoriesFromServer(baseUrl, auth.token);
+    });
+  }
+
+  @override
+  void dispose() {
+    _hoursWheelCtrl.dispose();
+    _minutesWheelCtrl.dispose();
+    _breakWheelCtrl.dispose();
+    super.dispose();
+  }
+
+  void _showCreateCategorySheet() {
+    final nameCtrl = TextEditingController();
+    final codeCtrl = TextEditingController();
+    int selectedIconIdx = 0;
+    int selectedColorIdx = 0;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Nueva Categoría de Enfoque',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.pop(sheetCtx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre (ej. Electrónica, Tesis, Lectura)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: codeCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Subtítulo o nota (opcional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Elige un ícono',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: List.generate(CustomCategory.iconChoices.length, (i) {
+                      final active = i == selectedIconIdx;
+                      final chosenColor = CustomCategory.colorChoices[selectedColorIdx];
+                      return InkWell(
+                        onTap: () => setSheetState(() => selectedIconIdx = i),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: active ? chosenColor.withValues(alpha: 0.18) : AppColors.surfaceMuted,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: active ? chosenColor : AppColors.borderSubtle,
+                              width: active ? 2 : 1,
+                            ),
+                          ),
+                          child: Icon(
+                            CustomCategory.iconChoices[i],
+                            color: active ? chosenColor : AppColors.textSecondary,
+                            size: 22,
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Elige un color',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: List.generate(CustomCategory.colorChoices.length, (i) {
+                      final c = CustomCategory.colorChoices[i];
+                      final active = i == selectedColorIdx;
+                      return InkWell(
+                        onTap: () => setSheetState(() => selectedColorIdx = i),
+                        borderRadius: BorderRadius.circular(99),
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: c,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: active ? AppColors.textPrimary : Colors.transparent,
+                              width: 2.5,
+                            ),
+                          ),
+                          child: active ? const Icon(Icons.check, color: Colors.white, size: 18) : null,
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 18),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primarySage,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () {
+                      final name = nameCtrl.text.trim();
+                      if (name.isEmpty) return;
+                      final code = codeCtrl.text.trim();
+                      final col = CustomCategory.colorChoices[selectedColorIdx];
+                      final newCat = CustomCategory(
+                        id: 'cat-${DateTime.now().millisecondsSinceEpoch}',
+                        name: name,
+                        subtitle: code.isEmpty ? 'Categoría personalizada' : code,
+                        iconIndex: selectedIconIdx,
+                        colorValue: col.toARGB32(),
+                      );
+                      final scheduleProv = context.read<ScheduleProvider>();
+                      final baseUrl = context.read<FocusLockProvider>().baseUrl;
+                      final token = context.read<AuthProvider>().token;
+                      scheduleProv.createCategorySynced(baseUrl, token, newCat);
+                      setState(() {
+                        _selectedSubjectIndex = scheduleProv.categories.length - 1;
+                      });
+                      Navigator.pop(sheetCtx);
+                    },
+                    child: const Text('Guardar Categoría', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -178,13 +352,18 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
   // PANTALLA 2: WELCOME SCREEN (EN ESPAÑOL)
   // ===========================================================================
   Widget _buildWelcomeScreen(BuildContext context, FocusLockProvider provider) {
+    final auth = context.watch<AuthProvider>();
+    final greeting = auth.isLoggedIn
+        ? '¡Hola, ${auth.username}! 👋'
+        : '¡Bienvenido a FocusLock! 👋';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Saludo y subtítulo
-        const Text(
-          '¡Buenos días, Paula! 👋',
-          style: TextStyle(
+        Text(
+          greeting,
+          style: const TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.5,
@@ -192,9 +371,11 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
-          '¿Lista para potenciar tu productividad hoy?',
-          style: TextStyle(
+        Text(
+          auth.isLoggedIn
+              ? 'Tienes ${auth.points} pts y ${auth.sessionsCompleted} sesiones completadas'
+              : '¿Listo para potenciar tu productividad hoy?',
+          style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
             color: AppColors.textSecondary,
@@ -315,22 +496,30 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
                 child: const Icon(Icons.local_fire_department_rounded, color: AppColors.terracottaBrown, size: 24),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Racha de 4 Días de Enfoque 🔥',
-                      style: TextStyle(
+                      !auth.isLoggedIn
+                          ? 'Racha: Inicia sesión para registrar'
+                          : (auth.currentStreakDays > 0
+                              ? 'Racha de ${auth.currentStreakDays} ${auth.currentStreakDays == 1 ? "Día" : "Días"} de Enfoque 🔥'
+                              : 'Racha actual: 0 días'),
+                      style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      '¡Excelente avance en tus metas de Electrónica Digital!',
-                      style: TextStyle(
+                      !auth.isLoggedIn
+                          ? 'Ve a Perfil para crear tu cuenta y sumar puntos.'
+                          : (auth.sessionsCompleted > 0
+                              ? '${auth.sessionsCompleted} sesiones completadas • ${auth.points} pts'
+                              : 'Completa tu primera sesión hoy para iniciar tu racha.'),
+                      style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
@@ -349,7 +538,11 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
   // PANTALLA 3: SETUP SCREEN (EN ESPAÑOL)
   // ===========================================================================
   Widget _buildSetupScreen(BuildContext context, FocusLockProvider provider) {
-    final selectedSubject = _subjects[_selectedSubjectIndex];
+    final scheduleProv = context.watch<ScheduleProvider>();
+    final categories = scheduleProv.categories;
+    final selectedName = categories.isNotEmpty
+        ? categories[_selectedSubjectIndex.clamp(0, categories.length - 1)].name
+        : 'Enfoque Libre';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -384,52 +577,109 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
 
         const SizedBox(height: 24),
 
-        // Sección 1: Duración (Presets 30s Demo, 25m, 45m, 60m)
-        const Text(
-          '1. Selecciona la Duración del Enfoque',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 12),
+        // Sección 1: Ruedita tipo reloj para elegir duración
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildDemoPresetChip(provider),
-            const SizedBox(width: 8),
-            _buildPresetChip(provider, 25, '25 min', 'Clásico'),
-            const SizedBox(width: 8),
-            _buildPresetChip(provider, 45, '45 min', 'Profundo'),
-            const SizedBox(width: 8),
-            _buildPresetChip(provider, 60, '60 min', 'Intenso'),
+            const Text(
+              '1. Elige la Duración del Enfoque',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            ActionChip(
+              avatar: const Icon(Icons.bolt_rounded, size: 16, color: AppColors.graceChipText),
+              label: Text(
+                provider.isDemoMode ? 'Demo 30s ✓' : 'Demo 30s',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+              ),
+              backgroundColor: provider.isDemoMode ? AppColors.graceChipBg : AppColors.surfaceMuted,
+              onPressed: () {
+                provider.setFocusSeconds(30, breakSeconds: 10);
+              },
+            ),
           ],
         ),
+        const SizedBox(height: 10),
+        _buildClockWheelPicker(provider),
 
         const SizedBox(height: 26),
 
-        // Sección 2: Carrusel de Materias
-        const Text(
-          '2. Elige la Materia de Estudio',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
-          ),
+        // Sección 2: Carrusel de Categorías (creadas por el usuario)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              '2. Elige o Crea tu Categoría',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _showCreateCategorySheet,
+              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+              label: const Text('Crear', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         SizedBox(
           height: 108,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: _subjects.length,
+            itemCount: categories.length + 1,
             separatorBuilder: (context, index) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
-              final sub = _subjects[index];
+              if (index == categories.length) {
+                return InkWell(
+                  onTap: _showCreateCategorySheet,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    width: 155,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceCard,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppColors.primarySage, width: 1.5),
+                    ),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_rounded, size: 28, color: AppColors.primarySageDark),
+                        SizedBox(height: 6),
+                        Text(
+                          'Nueva Categoría',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primarySageDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final cat = categories[index];
               final isSelected = index == _selectedSubjectIndex;
+              final subColor = cat.color;
 
               return InkWell(
                 onTap: () => setState(() => _selectedSubjectIndex = index),
+                onLongPress: () {
+                  final baseUrl = context.read<FocusLockProvider>().baseUrl;
+                  final token = context.read<AuthProvider>().token;
+                  scheduleProv.deleteCategorySynced(baseUrl, token, cat.id);
+                  if (_selectedSubjectIndex >= categories.length - 1) {
+                    setState(() => _selectedSubjectIndex = 0);
+                  }
+                },
                 borderRadius: BorderRadius.circular(18),
                 child: Container(
                   width: 175,
@@ -438,13 +688,13 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
                     color: isSelected ? AppColors.surfaceCard : AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: isSelected ? AppColors.primarySage : AppColors.borderSubtle,
+                      color: isSelected ? subColor : AppColors.borderSubtle,
                       width: isSelected ? 2.0 : 1.0,
                     ),
                     boxShadow: isSelected
                         ? [
                             BoxShadow(
-                              color: AppColors.primarySage.withValues(alpha: 0.12),
+                              color: subColor.withValues(alpha: 0.14),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
@@ -458,16 +708,16 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(sub['icon'] as IconData, size: 24, color: sub['color'] as Color),
+                          Icon(cat.icon, size: 24, color: subColor),
                           if (isSelected)
-                            const Icon(Icons.check_circle_rounded, size: 18, color: AppColors.primarySage),
+                            Icon(Icons.check_circle_rounded, size: 18, color: subColor),
                         ],
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            sub['name'] as String,
+                            cat.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -477,7 +727,9 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
                             ),
                           ),
                           Text(
-                            sub['code'] as String,
+                            cat.subtitle.isEmpty ? 'Categoría' : cat.subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 11,
                               color: AppColors.textMuted,
@@ -512,7 +764,7 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '¿Lista para ${selectedSubject['name']}?',
+                      '¿Listo para $selectedName?',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -563,7 +815,10 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
   // PANTALLA 4: FOCUS ACTIVE SCREEN (EN ESPAÑOL)
   // ===========================================================================
   Widget _buildFocusActiveScreen(BuildContext context, FocusLockProvider provider) {
-    final selectedSubject = _subjects[_selectedSubjectIndex];
+    final cats = context.watch<ScheduleProvider>().categories;
+    final activeCategoryName = cats.isNotEmpty
+        ? cats[_selectedSubjectIndex.clamp(0, cats.length - 1)].name
+        : 'Enfoque FocusLock';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -597,7 +852,7 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
         const SizedBox(height: 16),
 
         Text(
-          selectedSubject['name'] as String,
+          activeCategoryName,
           style: const TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
@@ -737,50 +992,59 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
             children: [
               const LockyMascot(pose: LockyPose.celebrating, size: 130),
               const SizedBox(height: 16),
-              const Text(
-                '¡Excelente trabajo, Paula! 🎉',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Completaste ${provider.selectedFocusMinutes} minutos de concentración total sin distracciones.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-
-              const SizedBox(height: 18),
-
-              // Tarjeta de Premio en Peach Cream (#F5DACB)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: AppColors.peachCream,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.terracottaBrown.withValues(alpha: 0.2)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.stars_rounded, color: AppColors.terracottaDark, size: 24),
-                    SizedBox(width: 10),
-                    Text(
-                      '+25 Puntos de Enfoque Ganados! 🌟',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.terracottaDark,
+              Builder(
+                builder: (ctx) {
+                  final auth = ctx.watch<AuthProvider>();
+                  final ptsEarned = provider.isDemoMode ? 10 : (provider.selectedFocusMinutes * 10);
+                  return Column(
+                    children: [
+                      Text(
+                        auth.isLoggedIn ? '¡Excelente trabajo, ${auth.username}! 🎉' : '¡Excelente trabajo! 🎉',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 6),
+                      Text(
+                        provider.isDemoMode
+                            ? 'Completaste tu sesión demo de concentración total.'
+                            : 'Completaste ${provider.selectedFocusMinutes} minutos de concentración total sin distracciones.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: AppColors.peachCream,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.terracottaBrown.withValues(alpha: 0.2)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.stars_rounded, color: AppColors.terracottaDark, size: 24),
+                            const SizedBox(width: 10),
+                            Text(
+                              '+$ptsEarned Puntos de Enfoque Ganados! 🌟',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.terracottaDark,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -978,106 +1242,153 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
     );
   }
 
-  Widget _buildDemoPresetChip(FocusLockProvider provider) {
-    final isSelected = provider.isDemoMode && provider.selectedFocusSeconds == 30;
+  Widget _buildClockWheelPicker(FocusLockProvider provider) {
+    final totalMins = provider.selectedFocusMinutes;
+    final currentHours = (totalMins ~/ 60).clamp(0, 3);
+    final currentMins = totalMins % 60;
 
-    return Expanded(
-      child: InkWell(
-        onTap: () => provider.setFocusSeconds(30, breakSeconds: 10),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.graceOrange : AppColors.surfaceCard,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected ? AppColors.graceOrange : AppColors.borderSubtle,
-              width: 1.5,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: AppColors.graceOrange.withValues(alpha: 0.25),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            children: [
-              Text(
-                '30 seg',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: isSelected ? Colors.white : AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Demo',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isSelected ? Colors.white.withValues(alpha: 0.9) : AppColors.graceOrange,
-                ),
-              ),
-            ],
-          ),
-        ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.borderSubtle, width: 1.2),
       ),
-    );
-  }
-
-  Widget _buildPresetChip(FocusLockProvider provider, int minutes, String label, String tag) {
-    final isSelected = !provider.isDemoMode && provider.selectedFocusMinutes == minutes;
-
-    return Expanded(
-      child: InkWell(
-        onTap: () => provider.setFocusMinutes(minutes),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.primarySage : AppColors.surfaceCard,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected ? AppColors.primarySageDark : AppColors.borderSubtle,
-              width: 1.5,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: AppColors.primarySage.withValues(alpha: 0.25),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Column(
+      child: Column(
+        children: [
+          Row(
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: isSelected ? Colors.white : AppColors.textPrimary,
+              Expanded(
+                child: Column(
+                  children: [
+                    const Text(
+                      'Horas',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                    ),
+                    SizedBox(
+                      height: 125,
+                      child: CupertinoPicker(
+                        scrollController: _hoursWheelCtrl,
+                        itemExtent: 38,
+                        magnification: 1.18,
+                        useMagnifier: true,
+                        onSelectedItemChanged: (h) {
+                          final nextTotal = (h * 60) + currentMins;
+                          provider.setFocusMinutes(nextTotal < 1 ? 1 : nextTotal);
+                        },
+                        children: List.generate(
+                          4,
+                          (h) => Center(
+                            child: Text(
+                              '${h.toString().padLeft(2, '0')} h',
+                              style: const TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                tag,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isSelected ? Colors.white.withValues(alpha: 0.85) : AppColors.textMuted,
+              const Text(
+                ':',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.primarySageDark),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    const Text(
+                      'Minutos',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                    ),
+                    SizedBox(
+                      height: 125,
+                      child: CupertinoPicker(
+                        scrollController: _minutesWheelCtrl,
+                        itemExtent: 38,
+                        magnification: 1.18,
+                        useMagnifier: true,
+                        onSelectedItemChanged: (m) {
+                          final nextTotal = (currentHours * 60) + m;
+                          provider.setFocusMinutes(nextTotal < 1 ? 1 : nextTotal);
+                        },
+                        children: List.generate(
+                          60,
+                          (m) => Center(
+                            child: Text(
+                              '${m.toString().padLeft(2, '0')} m',
+                              style: const TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 90,
+                color: AppColors.borderSubtle,
+                margin: const EdgeInsets.symmetric(horizontal: 6),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    const Text(
+                      'Descanso',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                    ),
+                    SizedBox(
+                      height: 125,
+                      child: CupertinoPicker(
+                        scrollController: _breakWheelCtrl,
+                        itemExtent: 38,
+                        magnification: 1.15,
+                        useMagnifier: true,
+                        onSelectedItemChanged: (idx) {
+                          provider.setBreakMinutes(idx + 1);
+                        },
+                        children: List.generate(
+                          30,
+                          (idx) => Center(
+                            child: Text(
+                              '${idx + 1} m',
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.breakChipText,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 6),
+          Text(
+            provider.isDemoMode
+                ? 'Seleccionado: 30 seg (Demo) / 10 seg descanso'
+                : 'Seleccionado: ${provider.selectedFocusMinutes} min enfoque / ${provider.selectedBreakMinutes} min descanso',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primarySageDark,
+            ),
+          ),
+        ],
       ),
     );
   }

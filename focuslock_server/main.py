@@ -52,6 +52,9 @@ from database import (
     get_user_by_id,
     award_session_points,
     get_leaderboard,
+    get_user_categories,
+    create_user_category,
+    delete_user_category,
     set_live_telemetry,
     get_live_telemetry,
     push_noise_sample,
@@ -201,6 +204,13 @@ if FASTAPI_AVAILABLE:
         email: Optional[str] = None
         username: Optional[str] = None
         password: str = Field(min_length=1, max_length=128)
+
+    class CreateCategoryRequest(BaseModel):
+        id: Optional[str] = None
+        name: str = Field(min_length=1, max_length=80)
+        subtitle: Optional[str] = ""
+        icon_index: int = Field(default=0, ge=0, le=50)
+        color_value: int = Field(default=0xFF7EAE9B)
 
     class EmergencyUnlockRequest(BaseModel):
         auth_token: Optional[str] = None
@@ -373,6 +383,48 @@ if FASTAPI_AVAILABLE:
         """Ranking de usuarios por puntos acumulados y minutos de enfoque."""
         rows = get_leaderboard(limit=limit)
         return {"ok": True, "count": len(rows), "leaderboard": rows}
+
+    @app.get("/api/categories")
+    def api_get_categories(authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+        """Devuelve las categorías personalizadas del usuario autenticado."""
+        user_id = _extract_bearer_user_id(authorization)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Token ausente o inválido.")
+        cats = get_user_categories(user_id)
+        return {"ok": True, "categories": cats}
+
+    @app.post("/api/categories")
+    def api_create_category(
+        req: CreateCategoryRequest,
+        authorization: Optional[str] = Header(default=None),
+    ) -> Dict[str, Any]:
+        """Crea o actualiza una categoría personalizada del usuario en PostgreSQL."""
+        user_id = _extract_bearer_user_id(authorization)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Token ausente o inválido.")
+        cat = create_user_category(
+            user_id=user_id,
+            name=req.name,
+            subtitle=req.subtitle or "",
+            icon_index=req.icon_index,
+            color_value=req.color_value,
+            cat_id=req.id,
+        )
+        if not cat:
+            raise HTTPException(status_code=400, detail="No se pudo guardar la categoría.")
+        return {"ok": True, "category": cat}
+
+    @app.delete("/api/categories/{category_id}")
+    def api_delete_category(
+        category_id: str,
+        authorization: Optional[str] = Header(default=None),
+    ) -> Dict[str, Any]:
+        """Elimina una categoría personalizada del usuario."""
+        user_id = _extract_bearer_user_id(authorization)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Token ausente o inválido.")
+        delete_user_category(user_id, category_id)
+        return {"ok": True}
 
     @app.post("/api/session/start")
     def start_session(

@@ -294,48 +294,48 @@ class ScheduleScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ChoiceChip(
-              selected: prov.selectedCategory == null,
+              selected: prov.selectedCategoryName == null,
               onSelected: (_) => prov.setCategoryFilter(null),
               label: const Text('Todos'),
               labelStyle: TextStyle(
                 fontSize: 12,
-                fontWeight: prov.selectedCategory == null ? FontWeight.w800 : FontWeight.w600,
-                color: prov.selectedCategory == null ? Colors.white : AppColors.textSecondary,
+                fontWeight: prov.selectedCategoryName == null ? FontWeight.w800 : FontWeight.w600,
+                color: prov.selectedCategoryName == null ? Colors.white : AppColors.textSecondary,
               ),
               backgroundColor: AppColors.surfaceCard,
               selectedColor: AppColors.primarySage,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
                 side: BorderSide(
-                  color: prov.selectedCategory == null ? AppColors.primarySage : AppColors.borderSubtle,
+                  color: prov.selectedCategoryName == null ? AppColors.primarySage : AppColors.borderSubtle,
                 ),
               ),
               showCheckmark: false,
             ),
           ),
 
-          // Chips para cada categoría con colores temáticos de Figma
-          ...TaskCategory.values.map((cat) {
-            final isSelected = prov.selectedCategory == cat;
+          // Chips para cada categoría creada por el usuario
+          ...prov.categories.map((cat) {
+            final isSelected = prov.selectedCategoryName == cat.name;
 
             return Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
                 selected: isSelected,
-                onSelected: (_) => prov.setCategoryFilter(isSelected ? null : cat),
-                avatar: Icon(cat.icon, size: 15, color: cat.textColor),
-                label: Text(cat.label),
+                onSelected: (_) => prov.setCategoryFilter(isSelected ? null : cat.name),
+                avatar: Icon(cat.icon, size: 15, color: cat.color),
+                label: Text(cat.name),
                 labelStyle: TextStyle(
                   fontSize: 12,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: cat.textColor,
+                  color: cat.color,
                 ),
                 backgroundColor: cat.backgroundColor.withValues(alpha: 0.5),
                 selectedColor: cat.backgroundColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                   side: BorderSide(
-                    color: isSelected ? cat.textColor : AppColors.borderSubtle,
+                    color: isSelected ? cat.color : AppColors.borderSubtle,
                     width: isSelected ? 1.6 : 1.0,
                   ),
                 ),
@@ -455,15 +455,15 @@ class ScheduleScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: task.category.backgroundColor,
+                          color: task.displayCategoryBgColor,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
-                          task.category.label,
+                          task.displayCategoryLabel,
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: task.category.textColor,
+                            color: task.displayCategoryColor,
                           ),
                         ),
                       ),
