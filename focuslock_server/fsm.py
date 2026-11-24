@@ -62,6 +62,7 @@ class FocusLockFSM:
 
         self._focus_duration: int = 25 * 60
         self._break_duration: int = 5 * 60
+        self._remaining_breaks: int = 1
         self._grace_seconds: int = 5
         self._insertion_timeout: int = 30
         self._insertion_timer: int = 30
@@ -99,6 +100,7 @@ class FocusLockFSM:
         focus_seconds: Optional[int] = None,
         break_seconds: Optional[int] = None,
         user_id: Optional[str] = None,
+        break_count: int = 1,
     ) -> None:
         """
         Inicia una sesión de estudio o demostración y pasa a WAITING_PHONE.
@@ -107,12 +109,18 @@ class FocusLockFSM:
         with self._lock:
             if focus_seconds is not None:
                 self._focus_duration = max(5, focus_seconds)
-                self._break_duration = max(1, break_seconds or 10)
+                self._break_duration = max(0, break_seconds if break_seconds is not None else 10)
+                self._remaining_breaks = max(0, break_count) if self._break_duration > 0 else 0
                 dur_desc = f"{self._focus_duration}s Demo Focus / {self._break_duration}s Break"
             else:
                 self._focus_duration = max(1, focus_minutes) * 60
-                self._break_duration = max(1, break_minutes) * 60
-                dur_desc = f"{focus_minutes}m Focus / {break_minutes}m Break"
+                self._break_duration = max(0, break_minutes) * 60
+                self._remaining_breaks = max(0, break_count) if self._break_duration > 0 else 0
+                dur_desc = (
+                    f"{focus_minutes}m Focus / {self._remaining_breaks}x{break_minutes}m Break"
+                    if self._remaining_breaks > 0
+                    else f"{focus_minutes}m Focus (Sin descanso)"
+                )
 
             self.total_seconds = self._focus_duration
             self.remaining_seconds = self._focus_duration
@@ -302,17 +310,23 @@ class FocusLockFSM:
                     self.hw.display.show_locked_focus(time_str)
 
                     if self.remaining_seconds <= 0:
-                        # Sesión completada: DESBLOQUEA CAJA Y ABRE TAPA
-                        self.state = FSMState.BREAK_OPEN
-                        self.remaining_seconds = self._break_duration
-                        self.total_seconds = self._break_duration
                         self.hw.unlock_and_open()
                         self.hw.beep(0.40)
-                        break_time_str = self.format_mm_ss(self.remaining_seconds)
-                        self.hw.display.show_break(break_time_str)
-                        self._record_event(
-                            f"Enfoque finalizado con éxito. Cerrojo y tapa abiertos -> [BREAK_OPEN: {break_time_str}]"
-                        )
+                        if self._break_duration > 0 and self._remaining_breaks > 0:
+                            self.state = FSMState.BREAK_OPEN
+                            self.remaining_seconds = self._break_duration
+                            self.total_seconds = self._break_duration
+                            break_time_str = self.format_mm_ss(self.remaining_seconds)
+                            self.hw.display.show_break(break_time_str)
+                            self._record_event(
+                                f"Enfoque finalizado con éxito. Cerrojo y tapa abiertos -> [BREAK_OPEN: {break_time_str}]"
+                            )
+                        else:
+                            self.state = FSMState.IDLE
+                            self.remaining_seconds = 0
+                            self.total_seconds = 0
+                            self.hw.display.show_idle()
+                            self._record_event("Enfoque finalizado con éxito (sin descanso) -> [IDLE].")
                         if self._on_focus_completed is not None:
                             cb = self._on_focus_completed
                             s_id = self.session_id
@@ -332,9 +346,21 @@ class FocusLockFSM:
                     self.hw.display.show_break(break_time_str)
 
                     if self.remaining_seconds <= 0:
-                        self.state = FSMState.IDLE
-                        self.remaining_seconds = 0
-                        self.total_seconds = 0
-                        self.hw.beep(0.25)
-                        self.hw.display.show_idle()
-                        self._record_event("Descanso concluido -> Sistema listo en [IDLE].")
+                        self._remaining_breaks = max(0, self._remaining_breaks - 1)
+                        if self._remaining_breaks > 0:
+                            self.state = FSMState.WAITING_PHONE
+                            self._insertion_timer = self._insertion_timeout
+                            self.remaining_seconds = self._focus_duration
+                            self.total_seconds = self._focus_duration
+                            self.hw.beep(0.25)
+                            self.hw.display.show_waiting_phone(self._insertion_timer)
+                            self._record_event(
+                                f"Descanso concluido. Siguiente ciclo ({self._remaining_breaks} restante(s)) -> [WAITING_PHONE]."
+                            )
+                        else:
+                            self.state = FSMState.IDLE
+                            self.remaining_seconds = 0
+                            self.total_seconds = 0
+                            self.hw.beep(0.25)
+                            self.hw.display.show_idle()
+                            self._record_event("Descanso concluido -> Sistema listo en [IDLE].")

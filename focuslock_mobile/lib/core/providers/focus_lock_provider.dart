@@ -14,6 +14,8 @@ class FocusLockProvider extends ChangeNotifier {
   FocusLockStatus _status = FocusLockStatus.initial();
   int _selectedFocusMinutes = 25;
   int _selectedBreakMinutes = 5;
+  bool _breaksEnabled = true;
+  int _breakCount = 1;
   int? _selectedFocusSeconds;
   int? _selectedBreakSeconds;
   bool _isMockMode = false;
@@ -51,6 +53,8 @@ class FocusLockProvider extends ChangeNotifier {
 
   int get selectedFocusMinutes => _selectedFocusMinutes;
   int get selectedBreakMinutes => _selectedBreakMinutes;
+  bool get breaksEnabled => _breaksEnabled;
+  int get breakCount => _breakCount;
   int? get selectedFocusSeconds => _selectedFocusSeconds;
   bool get isDemoMode => _selectedFocusSeconds != null;
 
@@ -84,8 +88,22 @@ class FocusLockProvider extends ChangeNotifier {
   }
 
   void setBreakMinutes(int minutes) {
-    if (_selectedBreakMinutes == minutes) return;
-    _selectedBreakMinutes = minutes;
+    final clamped = minutes.clamp(5, 15);
+    if (_selectedBreakMinutes == clamped) return;
+    _selectedBreakMinutes = clamped;
+    notifyListeners();
+  }
+
+  void setBreaksEnabled(bool enabled) {
+    if (_breaksEnabled == enabled) return;
+    _breaksEnabled = enabled;
+    notifyListeners();
+  }
+
+  void setBreakCount(int count) {
+    final clamped = count.clamp(1, 4);
+    if (_breakCount == clamped) return;
+    _breakCount = clamped;
     notifyListeners();
   }
 
@@ -134,7 +152,8 @@ class FocusLockProvider extends ChangeNotifier {
   Future<void> startSession() async {
     final config = PomodoroSessionConfig(
       focusMinutes: _selectedFocusMinutes,
-      breakMinutes: _selectedBreakMinutes,
+      breakMinutes: _breaksEnabled ? _selectedBreakMinutes : 0,
+      breakCount: _breaksEnabled ? _breakCount : 0,
       focusSeconds: _selectedFocusSeconds,
       breakSeconds: _selectedBreakSeconds,
     );

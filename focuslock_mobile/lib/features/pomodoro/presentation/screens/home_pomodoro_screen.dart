@@ -33,7 +33,7 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
     _hoursWheelCtrl = FixedExtentScrollController(initialItem: (initTotal ~/ 60).clamp(0, 3));
     _minutesWheelCtrl = FixedExtentScrollController(initialItem: initTotal % 60);
     _breakWheelCtrl = FixedExtentScrollController(
-      initialItem: (initialProvider.selectedBreakMinutes - 1).clamp(0, 29),
+      initialItem: (initialProvider.selectedBreakMinutes - 5).clamp(0, 10),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -1334,54 +1334,129 @@ class _HomePomodoroScreenState extends State<HomePomodoroScreen> {
                   ],
                 ),
               ),
-              Container(
-                width: 1,
-                height: 90,
-                color: AppColors.borderSubtle,
-                margin: const EdgeInsets.symmetric(horizontal: 6),
+            ],
+          ),
+          const Divider(height: 20, color: AppColors.borderSubtle),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Descansos tipo Pomodoro',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                  ),
+                  Text(
+                    'Elige si quieres pausas (5 a 15 min)',
+                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                  ),
+                ],
               ),
-              Expanded(
-                child: Column(
-                  children: [
-                    const Text(
-                      'Descanso',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
-                    ),
-                    SizedBox(
-                      height: 125,
-                      child: CupertinoPicker(
-                        scrollController: _breakWheelCtrl,
-                        itemExtent: 38,
-                        magnification: 1.15,
-                        useMagnifier: true,
-                        onSelectedItemChanged: (idx) {
-                          provider.setBreakMinutes(idx + 1);
-                        },
-                        children: List.generate(
-                          30,
-                          (idx) => Center(
-                            child: Text(
-                              '${idx + 1} m',
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.breakChipText,
+              Switch(
+                value: provider.breaksEnabled,
+                activeThumbColor: AppColors.primarySage,
+                onChanged: (val) => provider.setBreaksEnabled(val),
+              ),
+            ],
+          ),
+          if (provider.breaksEnabled) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Cantidad de descansos',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [1, 2, 3, 4].map((cnt) {
+                          final active = provider.breakCount == cnt;
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: InkWell(
+                                onTap: () => provider.setBreakCount(cnt),
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: active ? AppColors.primarySage : AppColors.surfaceMuted,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: active ? AppColors.primarySageDark : AppColors.borderSubtle,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '$cnt',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: active ? Colors.white : AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 96,
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Duración (5-15m)',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                      ),
+                      SizedBox(
+                        height: 86,
+                        child: CupertinoPicker(
+                          scrollController: _breakWheelCtrl,
+                          itemExtent: 32,
+                          magnification: 1.15,
+                          useMagnifier: true,
+                          onSelectedItemChanged: (idx) {
+                            provider.setBreakMinutes(idx + 5);
+                          },
+                          children: List.generate(
+                            11,
+                            (idx) => Center(
+                              child: Text(
+                                '${idx + 5} min',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.breakChipText,
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
+              ],
+            ),
+          ],
+          const SizedBox(height: 8),
           Text(
             provider.isDemoMode
-                ? 'Seleccionado: 30 seg (Demo) / 10 seg descanso'
-                : 'Seleccionado: ${provider.selectedFocusMinutes} min enfoque / ${provider.selectedBreakMinutes} min descanso',
+                ? 'Seleccionado: 30 seg (Demo) • ${provider.breaksEnabled ? "10 seg descanso" : "Sin descanso"}'
+                : (!provider.breaksEnabled
+                    ? 'Seleccionado: ${provider.selectedFocusMinutes} min enfoque • Sin descansos'
+                    : 'Seleccionado: ${provider.selectedFocusMinutes} min enfoque • ${provider.breakCount}x descanso de ${provider.selectedBreakMinutes} min'),
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,

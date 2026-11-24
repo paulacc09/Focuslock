@@ -188,8 +188,9 @@ if FASTAPI_AVAILABLE:
     class StartSessionRequest(BaseModel):
         focus_minutes: Optional[int] = Field(default=25, ge=0, le=180, description="Minutos de enfoque bloqueado")
         break_minutes: Optional[int] = Field(default=5, ge=0, le=60, description="Minutos de descanso")
+        break_count: int = Field(default=1, ge=0, le=6, description="Cantidad de descansos/ciclos Pomodoro")
         focus_seconds: Optional[int] = Field(default=None, ge=5, le=10800, description="Segundos directos para muestra/demo")
-        break_seconds: Optional[int] = Field(default=None, ge=1, le=3600, description="Segundos de descanso para muestra")
+        break_seconds: Optional[int] = Field(default=None, ge=0, le=3600, description="Segundos de descanso para muestra")
         session_id: Optional[str] = None
         session_name: Optional[str] = "Sesión de Enfoque FocusLock"
         user_id: Optional[str] = None
@@ -435,12 +436,13 @@ if FASTAPI_AVAILABLE:
         s_id = req.session_id or f"sess_{int(time.time() * 1000)}"
         resolved_user_id = _extract_bearer_user_id(authorization) or req.user_id
         fsm.start_session(
-            focus_minutes=req.focus_minutes or 25,
-            break_minutes=req.break_minutes or 5,
+            focus_minutes=req.focus_minutes if req.focus_minutes is not None else 25,
+            break_minutes=req.break_minutes if req.break_minutes is not None else 5,
             session_id=s_id,
             focus_seconds=req.focus_seconds,
             break_seconds=req.break_seconds,
             user_id=resolved_user_id,
+            break_count=req.break_count,
         )
         mode = f"{req.focus_seconds}s (Demo)" if req.focus_seconds else f"{req.focus_minutes}m"
 
