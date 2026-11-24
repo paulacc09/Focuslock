@@ -1,67 +1,64 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task_item.dart';
 
 class ScheduleProvider extends ChangeNotifier {
+  static const _kTasksKey = 'focuslock_schedule_tasks';
   DateTime _selectedDate = DateTime.now();
   TaskCategory? _selectedCategory; // null = Todos
 
-  final List<TaskItem> _tasks = [
-    TaskItem(
-      id: 'task-1',
-      title: 'Taller Señales - Convolución',
-      category: TaskCategory.university,
-      date: DateTime.now(),
-      startTime: '08:00 AM',
-      endTime: '09:30 AM',
-      durationMinutes: 90,
-      isCompleted: true,
-      useFocusLockBox: true,
-    ),
-    TaskItem(
-      id: 'task-2',
-      title: 'FSM Digital III - Diseño y VHDL',
-      category: TaskCategory.university,
-      date: DateTime.now(),
-      startTime: '10:00 AM',
-      endTime: '11:30 AM',
-      durationMinutes: 90,
-      isCompleted: true,
-      useFocusLockBox: true,
-    ),
-    TaskItem(
-      id: 'task-3',
-      title: 'Lectura Paper Arquitectura ARM',
-      category: TaskCategory.personal,
-      date: DateTime.now(),
-      startTime: '02:00 PM',
-      endTime: '02:45 PM',
-      durationMinutes: 45,
-      isCompleted: false,
-      useFocusLockBox: true,
-    ),
-    TaskItem(
-      id: 'task-4',
-      title: 'Propuesta UI App Cliente',
-      category: TaskCategory.freelance,
-      date: DateTime.now(),
-      startTime: '03:30 PM',
-      endTime: '04:30 PM',
-      durationMinutes: 60,
-      isCompleted: false,
-      useFocusLockBox: false,
-    ),
-    TaskItem(
-      id: 'task-5',
-      title: 'Calibrar Sensor TCRT5000',
-      category: TaskCategory.university,
-      date: DateTime.now(),
-      startTime: '05:00 PM',
-      endTime: '05:45 PM',
-      durationMinutes: 45,
-      isCompleted: false,
-      useFocusLockBox: true,
-    ),
-  ];
+  final List<TaskItem> _tasks = [];
+
+  ScheduleProvider() {
+    _loadTasks();
+  }
+
+  Future<void> _loadTasks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kTasksKey);
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        _tasks
+          ..clear()
+          ..addAll(decoded.map((item) {
+            final m = item as Map<String, dynamic>;
+            final catIdx = (m['category'] as num?)?.toInt() ?? 0;
+            return TaskItem(
+              id: m['id'].toString(),
+              title: m['title'].toString(),
+              category: TaskCategory.values[catIdx.clamp(0, TaskCategory.values.length - 1)],
+              date: DateTime.tryParse(m['date'].toString()) ?? DateTime.now(),
+              startTime: m['startTime'].toString(),
+              endTime: m['endTime'].toString(),
+              durationMinutes: (m['durationMinutes'] as num?)?.toInt() ?? 25,
+              isCompleted: m['isCompleted'] == true,
+              useFocusLockBox: m['useFocusLockBox'] != false,
+            );
+          }));
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveTasks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(_tasks.map((t) => {
+        'id': t.id,
+        'title': t.title,
+        'category': t.category.index,
+        'date': t.date.toIso8601String(),
+        'startTime': t.startTime,
+        'endTime': t.endTime,
+        'durationMinutes': t.durationMinutes,
+        'isCompleted': t.isCompleted,
+        'useFocusLockBox': t.useFocusLockBox,
+      }).toList());
+      await prefs.setString(_kTasksKey, encoded);
+    } catch (_) {}
+  }
 
   // Getters
   DateTime get selectedDate => _selectedDate;
@@ -132,17 +129,20 @@ class ScheduleProvider extends ChangeNotifier {
     if (index != -1) {
       final current = _tasks[index];
       _tasks[index] = current.copyWith(isCompleted: !current.isCompleted);
+      _saveTasks();
       notifyListeners();
     }
   }
 
   void addTask(TaskItem task) {
     _tasks.add(task);
+    _saveTasks();
     notifyListeners();
   }
 
   void deleteTask(String id) {
     _tasks.removeWhere((t) => t.id == id);
+    _saveTasks();
     notifyListeners();
   }
 }

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/providers/auth_provider.dart';
+import '../../../../core/providers/focus_lock_provider.dart';
 import '../../../../shared/widgets/locky_mascot.dart';
 
 enum MetricsPeriod { week, month }
@@ -15,7 +18,31 @@ class _MetricsScreenState extends State<MetricsScreen> {
   MetricsPeriod _period = MetricsPeriod.week;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshAll());
+  }
+
+  Future<void> _refreshAll() async {
+    if (!mounted) return;
+    final baseUrl = context.read<FocusLockProvider>().baseUrl;
+    final auth = context.read<AuthProvider>();
+    await Future.wait([
+      auth.refreshProfile(baseUrl),
+      auth.fetchMetricsData(baseUrl),
+    ]);
+  }
+
+  String _formatDurationMinutes(int minutes) {
+    if (minutes <= 0) return '0 min';
+    if (minutes < 60) return '$minutes min';
+    final hrs = minutes / 60.0;
+    return '${hrs.toStringAsFixed(1)} hrs';
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
     final isWeek = _period == MetricsPeriod.week;
 
     return Scaffold(
@@ -25,54 +52,48 @@ class _MetricsScreenState extends State<MetricsScreen> {
           'Métricas de Productividad',
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar métricas',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _refreshAll,
+          ),
+        ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          children: [
-            // Subtítulo
-            const Text(
-              'Estadísticas y rendimiento de tus bloques de enfoque con Locky',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textSecondary,
+        child: RefreshIndicator(
+          onRefresh: _refreshAll,
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            children: [
+              Text(
+                auth.isLoggedIn
+                    ? 'Estadísticas reales de ${auth.username} desde PostgreSQL & MongoDB'
+                    : 'Inicia sesión en Perfil para guardar y consultar tus métricas reales',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                ),
               ),
-            ),
-
-            const SizedBox(height: 18),
-
-            // Selector de Periodo: [Esta Semana] / [Este Mes]
-            _buildPeriodSelector(),
-
-            const SizedBox(height: 20),
-
-            // Grid 2x2 de KPIs Principales
-            _buildKpiGrid(isWeek),
-
-            const SizedBox(height: 24),
-
-            // Gráfico de Barras de Actividad
-            _buildActivityChartCard(isWeek),
-
-            const SizedBox(height: 24),
-
-            // Distribución por Materia / Categoría
-            _buildCategoryDistributionCard(isWeek),
-
-            const SizedBox(height: 24),
-
-            // Consejo de Enfoque de Locky
-            _buildLockyTipCard(),
-
-            const SizedBox(height: 20),
-          ],
+              const SizedBox(height: 18),
+              _buildPeriodSelector(),
+              const SizedBox(height: 20),
+              _buildKpiGrid(auth),
+              const SizedBox(height: 24),
+              _buildActivityChartCard(isWeek, auth),
+              const SizedBox(height: 24),
+              _buildSessionsAndMongoCard(auth),
+              const SizedBox(height: 24),
+              _buildLockyTipCard(auth),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // 1. Selector de Periodo (Cápsula)
   Widget _buildPeriodSelector() {
     return Container(
       padding: const EdgeInsets.all(4),
@@ -119,7 +140,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: AppColors.primarySage.withValues(alpha: 0.25),
+                    color: AppColors.primarySageDark.withValues(alpha: 0.25),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -131,7 +152,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             label,
             style: TextStyle(
               fontSize: 13,
-              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+              fontWeight: FontWeight.w700,
               color: isSelected ? Colors.white : AppColors.textSecondary,
             ),
           ),
@@ -140,8 +161,13 @@ class _MetricsScreenState extends State<MetricsScreen> {
     );
   }
 
-  // 2. Grid 2x2 de KPIs Principales
-  Widget _buildKpiGrid(bool isWeek) {
+  Widget _buildKpiGrid(AuthProvider auth) {
+    final pts = auth.points;
+    final level = (pts ~/ 200) + 1;
+    final mongo = auth.mongoSummary;
+    final avgAtt = mongo?['avg_attention'];
+    final avgDb = mongo?['avg_decibels'];
+
     return Column(
       children: [
         Row(
@@ -149,8 +175,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
             Expanded(
               child: _buildMetricCard(
                 title: 'Tiempo Total',
-                value: isWeek ? '28.5 hrs' : '114.0 hrs',
-                badgeText: isWeek ? '+12% vs anterior' : '+18% vs anterior',
+                value: _formatDurationMinutes(auth.totalFocusMinutes),
+                badgeText: auth.isLoggedIn ? 'enfoque acumulado' : 'modo invitado',
                 icon: Icons.timer_rounded,
                 accentColor: AppColors.primarySage,
               ),
@@ -159,7 +185,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             Expanded(
               child: _buildMetricCard(
                 title: 'Sesiones',
-                value: isWeek ? '47' : '188',
+                value: '${auth.sessionsCompleted}',
                 badgeText: 'completadas',
                 icon: Icons.check_circle_outline_rounded,
                 accentColor: AppColors.breakChipText,
@@ -172,21 +198,21 @@ class _MetricsScreenState extends State<MetricsScreen> {
           children: [
             Expanded(
               child: _buildMetricCard(
-                title: 'Racha Actual',
-                value: isWeek ? '5 Días' : '12 Días',
-                badgeText: isWeek ? 'consecutivos 🔥' : 'récord del mes 🔥',
-                icon: Icons.local_fire_department_rounded,
-                accentColor: AppColors.terracottaBrown,
+                title: 'Puntos Locky',
+                value: '$pts pts',
+                badgeText: 'Nivel $level',
+                icon: Icons.stars_rounded,
+                accentColor: AppColors.graceChipText,
               ),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: _buildMetricCard(
-                title: 'Puntos Locky',
-                value: isWeek ? '1,240 XP' : '4,960 XP',
-                badgeText: 'Nivel 8 Experta',
-                icon: Icons.stars_rounded,
-                accentColor: AppColors.graceChipText,
+                title: 'Atención (Mongo)',
+                value: avgAtt != null ? '$avgAtt%' : '0%',
+                badgeText: avgDb != null ? 'Ruido: $avgDb dB' : 'Sin telemetría',
+                icon: Icons.visibility_rounded,
+                accentColor: AppColors.terracottaBrown,
               ),
             ),
           ],
@@ -222,12 +248,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textSecondary,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
               Container(
@@ -264,26 +292,61 @@ class _MetricsScreenState extends State<MetricsScreen> {
     );
   }
 
-  // 3. Gráfico de Barras de Actividad Semanal
-  Widget _buildActivityChartCard(bool isWeek) {
-    final bars = isWeek
-        ? [
-            {'label': 'L', 'full': 'Lun', 'hours': 4.0, 'isPeak': false},
-            {'label': 'M', 'full': 'Mar', 'hours': 3.5, 'isPeak': false},
-            {'label': 'M', 'full': 'Mié', 'hours': 5.0, 'isPeak': true},
-            {'label': 'J', 'full': 'Jue', 'hours': 2.0, 'isPeak': false},
-            {'label': 'V', 'full': 'Vie', 'hours': 4.5, 'isPeak': false},
-            {'label': 'S', 'full': 'Sáb', 'hours': 3.0, 'isPeak': false},
-            {'label': 'D', 'full': 'Dom', 'hours': 1.5, 'isPeak': false},
-          ]
-        : [
-            {'label': 'S1', 'full': 'Sem 1', 'hours': 26.0, 'isPeak': false},
-            {'label': 'S2', 'full': 'Sem 2', 'hours': 30.0, 'isPeak': true},
-            {'label': 'S3', 'full': 'Sem 3', 'hours': 29.5, 'isPeak': false},
-            {'label': 'S4', 'full': 'Sem 4', 'hours': 28.5, 'isPeak': false},
-          ];
+  Widget _buildActivityChartCard(bool isWeek, AuthProvider auth) {
+    final now = DateTime.now();
+    final completed = auth.userSessions
+        .where((s) => (s['status'] ?? '').toString().toUpperCase() == 'COMPLETED')
+        .toList();
 
-    final maxHours = isWeek ? 5.5 : 34.0;
+    final List<Map<String, dynamic>> bars;
+    if (isWeek) {
+      const labels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+      const fullNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+      final minsByDay = List<int>.filled(7, 0);
+      final monday = now.subtract(Duration(days: now.weekday - 1));
+      final weekStart = DateTime(monday.year, monday.month, monday.day);
+
+      for (final s in completed) {
+        final dt = DateTime.tryParse((s['created_at'] ?? '').toString());
+        if (dt != null && !dt.isBefore(weekStart)) {
+          final mins = (s['target_minutes'] as num?)?.toInt() ?? 0;
+          minsByDay[dt.weekday - 1] += mins;
+        }
+      }
+      final maxVal = minsByDay.reduce((a, b) => a > b ? a : b);
+      bars = List.generate(7, (i) {
+        return {
+          'label': labels[i],
+          'full': fullNames[i],
+          'minutes': minsByDay[i],
+          'isPeak': maxVal > 0 && minsByDay[i] == maxVal,
+        };
+      });
+    } else {
+      final minsByWeek = List<int>.filled(4, 0);
+      for (final s in completed) {
+        final dt = DateTime.tryParse((s['created_at'] ?? '').toString());
+        if (dt != null && dt.year == now.year && dt.month == now.month) {
+          final weekIdx = ((dt.day - 1) ~/ 7).clamp(0, 3);
+          final mins = (s['target_minutes'] as num?)?.toInt() ?? 0;
+          minsByWeek[weekIdx] += mins;
+        }
+      }
+      final maxVal = minsByWeek.reduce((a, b) => a > b ? a : b);
+      bars = List.generate(4, (i) {
+        return {
+          'label': 'S${i + 1}',
+          'full': 'Sem ${i + 1}',
+          'minutes': minsByWeek[i],
+          'isPeak': maxVal > 0 && minsByWeek[i] == maxVal,
+        };
+      });
+    }
+
+    final totalMinsPeriod = bars.fold<int>(0, (sum, b) => sum + (b['minutes'] as int));
+    final maxMins = bars.fold<int>(0, (m, b) => (b['minutes'] as int) > m ? b['minutes'] as int : m);
+    final peakBar = bars.firstWhere((b) => b['isPeak'] == true, orElse: () => {});
+    final avgMins = (totalMinsPeriod / bars.length).round();
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -318,7 +381,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    isWeek ? 'Promedio: 4.1h / día' : 'Promedio: 28.5h / semana',
+                    isWeek ? 'Promedio: $avgMins min / día' : 'Promedio: $avgMins min / semana',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
@@ -338,7 +401,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     const Icon(Icons.show_chart_rounded, size: 14, color: AppColors.primarySageDark),
                     const SizedBox(width: 4),
                     Text(
-                      isWeek ? 'Pico: Mié (5h)' : 'Pico: Sem 2 (30h)',
+                      maxMins > 0
+                          ? 'Pico: ${peakBar['full']} (${peakBar['minutes']}m)'
+                          : 'Sin actividad aún',
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -351,23 +416,22 @@ class _MetricsScreenState extends State<MetricsScreen> {
             ],
           ),
           const SizedBox(height: 26),
-
-          // Barras Verticales Proporcionales
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: bars.map((b) {
-              final hours = b['hours'] as double;
+              final mins = b['minutes'] as int;
               final isPeak = b['isPeak'] as bool;
               const double chartHeight = 120;
-              final barHeight = (hours / maxHours * chartHeight).clamp(16.0, chartHeight);
+              final double barHeight = maxMins > 0
+                  ? (mins / maxMins * chartHeight).clamp(8.0, chartHeight)
+                  : 8.0;
 
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Horas encima de la barra
                   Text(
-                    isWeek ? '${hours.toStringAsFixed(hours.truncateToDouble() == hours ? 0 : 1)}h' : '${hours.toInt()}h',
+                    '${mins}m',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: isPeak ? FontWeight.w800 : FontWeight.w600,
@@ -375,8 +439,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-
-                  // Barra vertical estilizada
                   Container(
                     width: isWeek ? 28 : 46,
                     height: barHeight,
@@ -387,20 +449,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
                         color: isPeak ? AppColors.primarySageDark : AppColors.borderSubtle,
                         width: isPeak ? 1.5 : 1.0,
                       ),
-                      boxShadow: isPeak
-                          ? [
-                              BoxShadow(
-                                color: AppColors.primarySage.withValues(alpha: 0.3),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ]
-                          : null,
                     ),
                   ),
                   const SizedBox(height: 8),
-
-                  // Etiqueta del día
                   Text(
                     b['label'] as String,
                     style: TextStyle(
@@ -418,27 +469,24 @@ class _MetricsScreenState extends State<MetricsScreen> {
     );
   }
 
-  // 4. Distribución por Materia / Categoría
-  Widget _buildCategoryDistributionCard(bool isWeek) {
+  Widget _buildSessionsAndMongoCard(AuthProvider auth) {
+    final sessions = auth.userSessions;
+    final mongo = auth.mongoSummary;
+    final docs = (mongo?['total_telemetry_docs'] as num?)?.toInt() ?? 0;
+    final alerts = (mongo?['noise_violations'] as num?)?.toInt() ?? 0;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.surfaceCard,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: AppColors.borderSubtle, width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primarySageDark.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Distribución por Categoría',
+            'Sesiones Recientes (PostgreSQL)',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
@@ -446,156 +494,108 @@ class _MetricsScreenState extends State<MetricsScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Proporción de tiempo invertido en tus áreas de enfoque',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          Text(
+            'MongoDB Atlas: $docs muestras de telemetría • $alerts alertas de ruido',
+            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
-          const SizedBox(height: 20),
-
-          // Barra continua segmentada
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              height: 12,
-              child: Row(
-                children: const [
-                  Expanded(flex: 55, child: ColoredBox(color: AppColors.catUniversityText)),
-                  SizedBox(width: 2),
-                  Expanded(flex: 30, child: ColoredBox(color: AppColors.catFreelanceText)),
-                  SizedBox(width: 2),
-                  Expanded(flex: 15, child: ColoredBox(color: AppColors.catPersonalText)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-
-          // Desglose con porcentajes y horas exactas de Figma
-          _buildCategoryRow(
-            name: 'Universidad',
-            percentage: '55%',
-            hours: isWeek ? '15.7 hrs' : '62.7 hrs',
-            color: AppColors.catUniversityText,
-            bgColor: AppColors.catUniversityBg,
-          ),
-          const SizedBox(height: 12),
-          _buildCategoryRow(
-            name: 'Proyectos / Freelance',
-            percentage: '30%',
-            hours: isWeek ? '8.5 hrs' : '34.2 hrs',
-            color: AppColors.catFreelanceText,
-            bgColor: AppColors.catFreelanceBg,
-          ),
-          const SizedBox(height: 12),
-          _buildCategoryRow(
-            name: 'Desarrollo Personal',
-            percentage: '15%',
-            hours: isWeek ? '4.3 hrs' : '17.1 hrs',
-            color: AppColors.catPersonalText,
-            bgColor: AppColors.catPersonalBg,
-          ),
+          const SizedBox(height: 14),
+          if (!auth.isLoggedIn)
+            const Text(
+              'Inicia sesión para ver tu historial personal de sesiones.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            )
+          else if (sessions.isEmpty)
+            const Text(
+              'Aún no tienes sesiones registradas. ¡Inicia un Pomodoro para sumar tus primeros puntos!',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            )
+          else
+            ...sessions.take(6).map((s) {
+              final status = (s['status'] ?? '').toString();
+              final isDone = status == 'COMPLETED';
+              final pts = (s['points_awarded'] as num?)?.toInt() ?? 0;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      isDone ? Icons.check_circle_rounded : Icons.schedule_rounded,
+                      size: 18,
+                      color: isDone ? AppColors.breakChipText : AppColors.graceChipText,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        (s['session_name'] ?? s['id'] ?? 'Sesión').toString(),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (pts > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Text(
+                          '+$pts pts',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.breakChipText,
+                          ),
+                        ),
+                      ),
+                    Text(
+                      status,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: isDone ? AppColors.breakChipText : AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );
   }
 
-  Widget _buildCategoryRow({
-    required String name,
-    required String percentage,
-    required String hours,
-    required Color color,
-    required Color bgColor,
-  }) {
-    return Row(
-      children: [
-        Container(
-          width: 14,
-          height: 14,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            name,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            percentage,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          hours,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
+  Widget _buildLockyTipCard(AuthProvider auth) {
+    final tip = auth.sessionsCompleted == 0
+        ? '¡Bienvenido! Completa tu primera sesión de enfoque para ganar tus primeros puntos Locky.'
+        : 'Llevas ${auth.sessionsCompleted} sesiones completadas y ${auth.points} puntos acumulados. ¡Sigue así!';
 
-  // 5. Consejo de Enfoque de Locky
-  Widget _buildLockyTipCard() {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.surfaceCard,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: AppColors.borderSubtle, width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primarySage.withValues(alpha: 0.05),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          LockyMascot(pose: LockyPose.ready, size: 58),
-          SizedBox(width: 16),
+          const LockyMascot(pose: LockyPose.ready, size: 58),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      'Consejo de Enfoque de Locky',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 4),
-                Text(
-                  '¡Tus mañanas son tu momento más productivo! Mantén el ritmo antes de las 11:00 AM ☀️',
+                const Text(
+                  'Estado de Enfoque con Locky',
                   style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  tip,
+                  style: const TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,
                     height: 1.35,
